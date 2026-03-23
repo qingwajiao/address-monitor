@@ -1,0 +1,53 @@
+server:
+  port: 8080
+  api_key: ""  # 通过环境变量 API_KEY 注入
+
+mysql:
+  dsn: ""  # 通过环境变量 MYSQL_DSN 注入
+
+redis:
+  addr: ""  # 通过环境变量 REDIS_ADDR 注入
+  password: ""
+  db: 0
+
+rabbitmq:
+  url: ""  # 通过环境变量 RABBITMQ_URL 注入
+
+log:
+  level: "info"
+
+chains:
+  eth:
+    enabled: true
+    type: evm
+    chain_id: 1
+    rpc_url: ""  # 通过环境变量注入
+    backup_rpc_url: ""
+    poll_interval_seconds: 6
+    confirmations: 12
+  bsc:
+    enabled: true
+    type: evm
+    chain_id: 56
+    rpc_url: ""
+    backup_rpc_url: ""
+    poll_interval_seconds: 3
+    confirmations: 15
+  tron:
+    enabled: true
+    type: tron
+    rpc_url: ""
+    backup_rpc_url: ""
+    poll_interval_seconds: 3
+    confirmations: 20
+  sol:
+    enabled: true
+    type: sol
+    rpc_url: ""
+    http_rpc_url: ""
+    backup_rpc_url: ""
+    confirmations: 100
+
+dispatcher:
+  timeout_seconds: 10
+  max_retries: 3

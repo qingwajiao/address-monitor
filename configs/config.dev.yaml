@@ -1,0 +1,53 @@
+﻿server:
+  port: 8080
+  api_key: "test-api-key-123"
+
+mysql:
+  dsn: "root:root@tcp(127.0.0.1:3306)/address_monitor?charset=utf8mb4&parseTime=True&loc=UTC"
+
+redis:
+  addr: "127.0.0.1:6379"
+  password: ""
+  db: 0
+
+rabbitmq:
+  url: "amqp://admin:admin@127.0.0.1:5672/"
+
+log:
+  level: "debug"
+
+chains:
+  eth:
+    enabled: true
+    type: evm
+    chain_id: 11155111
+    rpc_url: "https://ethereum-sepolia-rpc.publicnode.com"
+    backup_rpc_url: "https://1rpc.io/sepolia"
+    poll_interval_seconds: 6
+    confirmations: 12
+  bsc:
+    enabled: false
+    type: evm
+    chain_id: 97
+    rpc_url: "https://bsc-testnet-rpc.publicnode.com"
+    backup_rpc_url: "https://data-seed-prebsc-1-s1.binance.org:8545"
+    poll_interval_seconds: 3
+    confirmations: 15
+  tron:
+    enabled: false
+    type: tron
+    rpc_url: "https://api.shasta.trongrid.io"
+    backup_rpc_url: "https://api.trongrid.io"
+    poll_interval_seconds: 3
+    confirmations: 20
+  sol:
+    enabled: false
+    type: sol
+    rpc_url: "wss://api.devnet.solana.com"
+    http_rpc_url: "https://api.devnet.solana.com"
+    backup_rpc_url: "https://api.mainnet-beta.solana.com"
+    confirmations: 100
+
+dispatcher:
+  timeout_seconds: 10
+  max_retries: 3
