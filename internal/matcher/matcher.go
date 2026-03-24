@@ -35,10 +35,10 @@ func (m *Matcher) IsWatched(ctx context.Context, chain, address string) ([]*stor
 
 	// 第一层：Bloom Filter
 	if !m.bf.Test(key) {
-		zap.L().Debug("BF 未命中",
-			zap.String("chain", chain),
-			zap.String("address", addr),
-		)
+		//zap.L().Debug("BF 未命中",
+		//	zap.String("chain", chain),
+		//	zap.String("address", addr),
+		//)
 		return nil, nil
 	}
 
@@ -71,7 +71,7 @@ func (m *Matcher) IsWatched(ctx context.Context, chain, address string) ([]*stor
 	return subs, nil
 }
 
-// Add 新增监控地址 todo
+// Add 新增监控地址
 func (m *Matcher) Add(ctx context.Context, sub *store.Subscription) error {
 	addr := strings.ToLower(sub.Address)
 	sub.Address = addr

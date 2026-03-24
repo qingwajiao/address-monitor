@@ -57,7 +57,8 @@ func NewSupervisor(
 func (s *Supervisor) Run(ctx context.Context) {
 	enabledChains := os.Getenv("ENABLED_CHAINS")
 	if enabledChains == "" {
-		enabledChains = "eth,bsc,tron,sol" // 默认启用全部
+		//enabledChains = "eth,bsc,tron,sol" // 默认启用全部
+		enabledChains = "eth"
 	}
 
 	eventCh := make(chan RawEvent, 1000)
@@ -172,21 +173,19 @@ func (s *Supervisor) handleRawEvent(
 		return
 	}
 
-	if len(events) > 0 {
-		zap.L().Debug("解析出事件",
-			zap.String("chain", raw.Chain),
-			zap.String("tx", raw.TxHash),
-			zap.Uint64("block", raw.BlockNum),
-			zap.Int("event_count", len(events)),
-		)
-	}
-
 	for _, event := range events {
 		// 地址匹配（三层漏斗）
 		subs, err := s.matcher.IsWatched(ctx, event.Chain, event.WatchedAddress)
 		if err != nil {
 			zap.L().Warn("地址匹配失败", zap.Error(err))
 			continue
+		}
+
+		if event.BlockNumber == 10491419 {
+			zap.L().Info("目标区块")
+		}
+		if event.WatchedAddress == "0x947faa43661d3d672b54aa858619272d208bdb5a" {
+			zap.L().Info("命中地址")
 		}
 		if len(subs) == 0 {
 			continue // 不在监控列表，跳过

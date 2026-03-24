@@ -11,7 +11,6 @@ import (
 
 	"address-monitor/internal/api"
 	appconfig "address-monitor/internal/config"
-	"address-monitor/internal/matcher"
 	"address-monitor/internal/mq"
 	"address-monitor/internal/store"
 
@@ -70,14 +69,11 @@ func main() {
 	subStore := store.NewSubscriptionStore(db)
 	deliveryStore := store.NewDeliveryStore(db)
 
-	// 初始化 Matcher
-	m := matcher.New(rdb, subStore)
-
 	// 初始化 Publisher
 	publisher := mq.NewPublisher(mqConn)
 
 	// 启动 HTTP 服务
-	router := api.NewRouter(cfg, subStore, deliveryStore, m, rdb, publisher)
+	router := api.NewRouter(cfg, subStore, deliveryStore, rdb, publisher)
 
 	srv := &http.Server{
 		Addr:    fmt.Sprintf(":%d", cfg.Server.Port),

@@ -107,7 +107,7 @@ func (t *BlockTracker) Get() uint64 {
 func safeBuffer(chain string) uint64 {
 	switch chain {
 	case "ETH":
-		return 12
+		return 2
 	case "BSC":
 		return 15
 	case "TRON":

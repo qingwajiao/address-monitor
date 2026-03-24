@@ -13,7 +13,7 @@ func NewPublisher(conn *Connection) *Publisher {
 }
 
 // Publish 发布持久化消息
-// exchange 为空字符串时直接发到 routingKey 指定的队列
+// exchange 为空字符串时直接发到 routingKey 指定的队列 TODO 缺少ack确认机制
 func (p *Publisher) Publish(exchange, routingKey string, body []byte, headers amqp.Table) error {
 	ch, err := p.conn.Channel()
 	if err != nil {

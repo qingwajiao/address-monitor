@@ -54,6 +54,7 @@ func (f *EVMFetcher) LatestBlockNum(ctx context.Context) (uint64, error) {
 	return num, nil
 }
 
+// 根据区块高度 获取区块&全量log --> 将区块中的每笔交易和每条log解析封装成统一的RawEvent，然后返回 RawEvent数组events
 func (f *EVMFetcher) FetchBlock(ctx context.Context, num uint64) ([]chain.RawEvent, error) {
 	blockNum := big.NewInt(int64(num))
 	client := f.getClient()
@@ -176,7 +177,7 @@ func (f *EVMFetcher) resetFailure() {
 func (f *EVMFetcher) chainIDInt() int64 {
 	switch f.chainName {
 	case "ETH":
-		return 1
+		return 11155111
 	case "BSC":
 		return 56
 	default:

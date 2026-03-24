@@ -83,3 +83,9 @@ func (s *SubscriptionStore) UpdateStatus(ctx context.Context, id uint64, status 
 		Where("id = ?", id).
 		Update("status", status).Error
 }
+
+// BatchCreate 批量插入，使用 GORM 的 CreateInBatches
+func (s *SubscriptionStore) BatchCreate(ctx context.Context, subs []*Subscription) error {
+	return s.db.WithContext(ctx).
+		CreateInBatches(subs, 500).Error
+}
