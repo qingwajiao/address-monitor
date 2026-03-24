@@ -11,11 +11,11 @@ import (
 )
 
 type DeadLetterHandler struct {
-	deliveryStore *store.DeliveryStore
+	webhookStore *store.WebhookLogStore
 }
 
-func NewDeadLetterHandler(deliveryStore *store.DeliveryStore) *DeadLetterHandler {
-	return &DeadLetterHandler{deliveryStore: deliveryStore}
+func NewDeadLetterHandler(webhookStore *store.WebhookLogStore) *DeadLetterHandler {
+	return &DeadLetterHandler{webhookStore: webhookStore}
 }
 
 func (d *DeadLetterHandler) Handle(msg amqp.Delivery) {
@@ -34,15 +34,10 @@ func (d *DeadLetterHandler) Handle(msg amqp.Delivery) {
 	}
 
 	ctx := context.Background()
+	d.webhookStore.MarkDead(ctx, task.WebhookLogID)
 
-	// 标记为死信
-	if err := d.deliveryStore.MarkDead(ctx, task.SubscriptionID); err != nil {
-		zap.L().Error("标记死信失败", zap.Error(err))
-	}
-
-	// 打告警日志（生产环境可接入告警系统）
-	zap.L().Error("!!推送彻底失败，需人工介入!!",
-		zap.String("task_id", task.TaskID),
+	zap.L().Error("!! 推送彻底失败，需人工介入 !!",
+		zap.Uint64("webhook_log_id", task.WebhookLogID),
 		zap.String("event_id", task.Event.EventID),
 		zap.String("chain", task.Event.Chain),
 		zap.String("tx_hash", task.Event.TxHash),

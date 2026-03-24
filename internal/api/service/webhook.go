@@ -15,62 +15,52 @@ import (
 )
 
 type WebhookService struct {
-	deliveryStore *store.DeliveryStore
-	publisher     *mq.Publisher
-	rdb           *redis.Client
+	webhookStore *store.WebhookLogStore
+	publisher    *mq.Publisher
+	rdb          *redis.Client
 }
 
 func NewWebhookService(
-	deliveryStore *store.DeliveryStore,
+	webhookStore *store.WebhookLogStore,
 	publisher *mq.Publisher,
 	rdb *redis.Client,
 ) *WebhookService {
 	return &WebhookService{
-		deliveryStore: deliveryStore,
-		publisher:     publisher,
-		rdb:           rdb,
+		webhookStore: webhookStore,
+		publisher:    publisher,
+		rdb:          rdb,
 	}
 }
 
 // SetWebhookURL 设置全局 Webhook URL
-func (s *WebhookService) SetWebhookURL(ctx context.Context, userID string, req *dto.SetWebhookURLReq) error {
-	key := fmt.Sprintf("webhook:url:%s", userID)
+func (s *WebhookService) SetWebhookURL(ctx context.Context, appID uint64, req *dto.SetWebhookURLReq) error {
+	key := fmt.Sprintf("webhook:url:%d", appID)
 	if err := s.rdb.Set(ctx, key, req.URL, 0).Err(); err != nil {
 		return err
 	}
-	zap.L().Info("设置全局 Webhook URL",
-		zap.String("user_id", userID),
+	zap.L().Info("设置 Webhook URL",
+		zap.Uint64("app_id", appID),
 		zap.String("url", req.URL),
 	)
 	return nil
 }
 
-// GetWebhookURL 查询全局 Webhook URL
-func (s *WebhookService) GetWebhookURL(ctx context.Context, userID string) (*dto.WebhookURLResp, error) {
-	key := fmt.Sprintf("webhook:url:%s", userID)
-	url, err := s.rdb.Get(ctx, key).Result()
-	if err != nil {
-		return &dto.WebhookURLResp{URL: ""}, nil
-	}
-	return &dto.WebhookURLResp{URL: url}, nil
-}
-
-// ListDeliveries 查询推送记录
-func (s *WebhookService) ListDeliveries(ctx context.Context, userID string, req *dto.ListDeliveryReq) (*dto.ListDeliveryResp, error) {
+// WebhookLogs 查询推送记录
+func (s *WebhookService) ListLogs(ctx context.Context, appID uint64, req *dto.ListWebhookLogReq) (*dto.ListWebhookLogResp, error) {
 	page, size := normalizePage(req.Page, req.Size)
 	chain := strings.ToUpper(req.Chain)
 
-	logs, total, err := s.deliveryStore.ListByUser(ctx, userID, chain, req.Status, page, size)
+	logs, total, err := s.webhookStore.ListByApp(ctx, appID, chain, req.Status, page, size)
 	if err != nil {
 		return nil, err
 	}
 
-	list := make([]*dto.DeliveryResp, 0, len(logs))
+	list := make([]*dto.WebhookLogResp, 0, len(logs))
 	for _, log := range logs {
-		list = append(list, toDeliveryResp(log))
+		list = append(list, toWebhookLogResp(log))
 	}
 
-	return &dto.ListDeliveryResp{
+	return &dto.ListWebhookLogResp{
 		List:  list,
 		Total: total,
 		Page:  page,
@@ -78,11 +68,24 @@ func (s *WebhookService) ListDeliveries(ctx context.Context, userID string, req 
 	}, nil
 }
 
-// Resend 手动重推
-func (s *WebhookService) Resend(ctx context.Context, id uint64) error {
-	log, err := s.deliveryStore.GetByID(ctx, id)
+// GetWebhookURL 查询全局 Webhook URL
+func (s *WebhookService) GetWebhookURL(ctx context.Context, appID uint64) (*dto.WebhookURLResp, error) {
+	key := fmt.Sprintf("webhook:url:%d", appID)
+	url, err := s.rdb.Get(ctx, key).Result()
 	if err != nil {
-		return fmt.Errorf("delivery log not found")
+		return &dto.WebhookURLResp{URL: ""}, nil
+	}
+	return &dto.WebhookURLResp{URL: url}, nil
+}
+
+// Resend 加上 appID 参数做鉴权
+func (s *WebhookService) Resend(ctx context.Context, appID, id uint64) error {
+	log, err := s.webhookStore.GetByID(ctx, id)
+	if err != nil {
+		return fmt.Errorf("推送记录不存在")
+	}
+	if log.AppID != appID {
+		return fmt.Errorf("无权操作此记录")
 	}
 
 	if err := s.publisher.Publish(
@@ -94,8 +97,8 @@ func (s *WebhookService) Resend(ctx context.Context, id uint64) error {
 		return err
 	}
 
-	zap.L().Info("手动重推推送任务",
-		zap.Uint64("delivery_id", id),
+	zap.L().Info("手动重推",
+		zap.Uint64("webhook_log_id", id),
 		zap.String("chain", log.Chain),
 		zap.String("tx_hash", log.TxHash),
 	)
@@ -104,8 +107,8 @@ func (s *WebhookService) Resend(ctx context.Context, id uint64) error {
 
 // ── 转换函数 ──────────────────────────────────────────────
 
-func toDeliveryResp(log *store.DeliveryLog) *dto.DeliveryResp {
-	return &dto.DeliveryResp{
+func toWebhookLogResp(log *store.WebhookLog) *dto.WebhookLogResp {
+	return &dto.WebhookLogResp{
 		ID:           log.ID,
 		EventID:      log.EventID,
 		Chain:        log.Chain,

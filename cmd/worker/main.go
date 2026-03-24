@@ -67,8 +67,8 @@ func main() {
 	ch.Close()
 
 	// 初始化 Matcher
-	subStore := store.NewSubscriptionStore(db)
-	m := matcher.New(rdb, subStore)
+	addrStore := store.NewWatchedAddressStore(db)
+	m := matcher.New(rdb, addrStore)
 
 	// 恢复 Bloom Filter
 	ctx, cancel := signal.NotifyContext(context.Background(), os.Interrupt, syscall.SIGTERM)

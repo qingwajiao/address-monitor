@@ -65,7 +65,7 @@ func (s *Supervisor) Run(ctx context.Context) {
 	errCh := make(chan error, 100)
 
 	syncStore := store.NewChainSyncStore(s.db)
-	rawStore := store.NewRawEventStore(s.db)
+	rawStore := store.NewChainRawEventStore(s.db)
 
 	// 按配置启动各链 Listener
 	for _, name := range strings.Split(enabledChains, ",") {
@@ -132,7 +132,7 @@ func (s *Supervisor) Run(ctx context.Context) {
 func (s *Supervisor) processEvents(
 	ctx context.Context,
 	eventCh <-chan RawEvent,
-	rawStore *store.RawEventStore,
+	rawStore *store.ChainRawEventStore,
 ) {
 	for {
 		select {
@@ -147,7 +147,7 @@ func (s *Supervisor) processEvents(
 func (s *Supervisor) handleRawEvent(
 	ctx context.Context,
 	raw RawEvent,
-	rawStore *store.RawEventStore,
+	rawStore *store.ChainRawEventStore,
 ) {
 	p, ok := s.parsers[raw.Chain]
 	if !ok {
@@ -216,8 +216,7 @@ func (s *Supervisor) handleRawEvent(
 
 		// 旁路写 raw_events（异步 fire-and-forget）
 		go func(r RawEvent, e *parser.NormalizedEvent) {
-			rawStore.Insert(context.Background(), &store.RawEvent{
-				Chain:       r.Chain,
+			rawStore.Insert(context.Background(), r.Chain, &store.ChainRawEvent{
 				TxHash:      r.TxHash,
 				BlockNumber: r.BlockNum,
 				BlockTime:   uint32(r.BlockTime),

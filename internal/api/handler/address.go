@@ -5,64 +5,59 @@ import (
 	"strconv"
 
 	"address-monitor/internal/api/dto"
+	"address-monitor/internal/api/middleware"
 	"address-monitor/internal/api/service"
 
 	"github.com/gin-gonic/gin"
 )
 
 type AddressHandler struct {
-	svc *service.SubscriptionService
+	svc *service.AddressService
 }
 
-func NewAddressHandler(svc *service.SubscriptionService) *AddressHandler {
+func NewAddressHandler(svc *service.AddressService) *AddressHandler {
 	return &AddressHandler{svc: svc}
 }
 
 func (h *AddressHandler) Create(c *gin.Context) {
-	var req dto.CreateSubReq
+	var req dto.CreateAddressReq
 	if err := c.ShouldBindJSON(&req); err != nil {
 		Fail(c, http.StatusBadRequest, err.Error())
 		return
 	}
-
-	userID := c.GetHeader("X-API-Key")
-	result, err := h.svc.Create(c.Request.Context(), userID, &req)
+	appID := middleware.GetAppID(c)
+	result, err := h.svc.Create(c.Request.Context(), appID, &req)
 	if err != nil {
 		Fail(c, http.StatusBadRequest, err.Error())
 		return
 	}
-
 	Created(c, result)
 }
 
 func (h *AddressHandler) BatchCreate(c *gin.Context) {
-	var req dto.BatchCreateSubReq
+	var req dto.BatchCreateAddressReq
 	if err := c.ShouldBindJSON(&req); err != nil {
 		Fail(c, http.StatusBadRequest, err.Error())
 		return
 	}
-
-	userID := c.GetHeader("X-API-Key")
-	result, err := h.svc.BatchCreate(c.Request.Context(), userID, &req)
+	appID := middleware.GetAppID(c)
+	result, err := h.svc.BatchCreate(c.Request.Context(), appID, &req)
 	if err != nil {
 		Fail(c, http.StatusBadRequest, err.Error())
 		return
 	}
-
 	Success(c, result)
 }
 
 func (h *AddressHandler) List(c *gin.Context) {
-	var req dto.ListSubReq
+	var req dto.ListAddressReq
 	c.ShouldBindQuery(&req)
-
-	userID := c.GetHeader("X-API-Key")
-	result, err := h.svc.List(c.Request.Context(), userID, &req)
+	appID := middleware.GetAppID(c)
+	result, err := h.svc.List(c.Request.Context(), appID, &req)
 	if err != nil {
 		Fail(c, http.StatusInternalServerError, err.Error())
 		return
 	}
-
 	Success(c, result)
 }
 
@@ -72,13 +67,12 @@ func (h *AddressHandler) Get(c *gin.Context) {
 		Fail(c, http.StatusBadRequest, "invalid id")
 		return
 	}
-
-	result, err := h.svc.GetByID(c.Request.Context(), id)
+	appID := middleware.GetAppID(c)
+	result, err := h.svc.GetByID(c.Request.Context(), appID, id)
 	if err != nil {
 		Fail(c, http.StatusNotFound, err.Error())
 		return
 	}
-
 	Success(c, result)
 }
 
@@ -88,12 +82,10 @@ func (h *AddressHandler) Delete(c *gin.Context) {
 		Fail(c, http.StatusBadRequest, "invalid id")
 		return
 	}
-
-	userID := c.GetHeader("X-API-Key")
-	if err := h.svc.Delete(c.Request.Context(), userID, id); err != nil {
+	appID := middleware.GetAppID(c)
+	if err := h.svc.Delete(c.Request.Context(), appID, id); err != nil {
 		Fail(c, http.StatusInternalServerError, err.Error())
 		return
 	}
-
 	Success(c, nil)
 }

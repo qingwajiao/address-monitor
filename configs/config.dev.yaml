@@ -51,3 +51,16 @@ chains:
 dispatcher:
   timeout_seconds: 10
   max_retries: 3
+
+
+jwt:
+  secret: "dev-jwt-secret-key-change-in-production"
+  base_url: "http://localhost:8080"
+
+email:
+  dev_mode: true   # dev 模式只打日志，不真实发邮件
+  host: ""
+  port: 465
+  username: ""
+  password: ""
+  from: "noreply@address-monitor.com"

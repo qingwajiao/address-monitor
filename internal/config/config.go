@@ -15,6 +15,22 @@ type Config struct {
 	Chains     map[string]ChainConfig
 	Dispatcher DispatcherConfig
 	Log        LogConfig
+	JWT        JWTConfig   // 新增
+	Email      EmailConfig // 新增
+}
+
+type JWTConfig struct {
+	Secret  string `mapstructure:"secret"`
+	BaseURL string `mapstructure:"base_url"` // 用于邮件里的链接
+}
+
+type EmailConfig struct {
+	Host     string `mapstructure:"host"`
+	Port     int    `mapstructure:"port"`
+	Username string `mapstructure:"username"`
+	Password string `mapstructure:"password"`
+	From     string `mapstructure:"from"`
+	DevMode  bool   `mapstructure:"dev_mode"`
 }
 
 type LogConfig struct {

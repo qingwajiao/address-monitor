@@ -1,6 +1,9 @@
 package main
 
 import (
+	"address-monitor/internal/api/service"
+	"address-monitor/pkg/email"
+	jwtpkg "address-monitor/pkg/jwt"
 	"context"
 	"fmt"
 	"net/http"
@@ -43,6 +46,11 @@ func main() {
 		zap.L().Fatal("初始化 MySQL 失败", zap.Error(err))
 	}
 
+	// 执行数据库迁移（只在 API Service 执行）
+	if err := appconfig.RunMigrations(cfg.MySQL.DSN); err != nil {
+		zap.L().Fatal("数据库迁移失败", zap.Error(err))
+	}
+
 	// 初始化 Redis
 	rdb, err := appconfig.InitRedis(cfg)
 	if err != nil {
@@ -66,14 +74,49 @@ func main() {
 	ch.Close()
 
 	// 初始化各 Store
-	subStore := store.NewSubscriptionStore(db)
-	deliveryStore := store.NewDeliveryStore(db)
+	userStore := store.NewUserStore(db)
+	appStore := store.NewAppStore(db)
+	emailVerifyStore := store.NewEmailVerificationStore(db)
+	refreshTokenStore := store.NewRefreshTokenStore(db)
+	addrStore := store.NewWatchedAddressStore(db)
+	webhookStore := store.NewWebhookLogStore(db)
 
 	// 初始化 Publisher
 	publisher := mq.NewPublisher(mqConn)
 
+	jwtManager := jwtpkg.NewManager(cfg.JWT.Secret)
+	emailSender := email.NewSender(&email.Config{
+		Host:     cfg.Email.Host,
+		Port:     cfg.Email.Port,
+		Username: cfg.Email.Username,
+		Password: cfg.Email.Password,
+		From:     cfg.Email.From,
+		DevMode:  cfg.Email.DevMode,
+	})
+
+	// 初始化 AuthService
+	authSvc := service.NewAuthService(
+		userStore,
+		emailVerifyStore,
+		refreshTokenStore,
+		jwtManager,
+		emailSender,
+		cfg.JWT.BaseURL,
+	)
+
 	// 启动 HTTP 服务
-	router := api.NewRouter(cfg, subStore, deliveryStore, rdb, publisher)
+	router := api.NewRouter(
+		appStore,
+		addrStore,
+		webhookStore,
+		userStore,
+		emailVerifyStore,
+		refreshTokenStore,
+		rdb,
+		publisher,
+		jwtManager,
+		authSvc,
+	)
 
 	srv := &http.Server{
 		Addr:    fmt.Sprintf(":%d", cfg.Server.Port),

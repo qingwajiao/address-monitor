@@ -5,6 +5,7 @@ import (
 	"strconv"
 
 	"address-monitor/internal/api/dto"
+	"address-monitor/internal/api/middleware"
 	"address-monitor/internal/api/service"
 
 	"github.com/gin-gonic/gin"
@@ -24,38 +25,33 @@ func (h *WebhookHandler) SetWebhookURL(c *gin.Context) {
 		Fail(c, http.StatusBadRequest, err.Error())
 		return
 	}
-
-	userID := c.GetHeader("X-API-Key")
-	if err := h.svc.SetWebhookURL(c.Request.Context(), userID, &req); err != nil {
+	appID := middleware.GetAppID(c)
+	if err := h.svc.SetWebhookURL(c.Request.Context(), appID, &req); err != nil {
 		Fail(c, http.StatusInternalServerError, err.Error())
 		return
 	}
-
 	Success(c, nil)
 }
 
 func (h *WebhookHandler) GetWebhookURL(c *gin.Context) {
-	userID := c.GetHeader("X-API-Key")
-	result, err := h.svc.GetWebhookURL(c.Request.Context(), userID)
+	appID := middleware.GetAppID(c)
+	result, err := h.svc.GetWebhookURL(c.Request.Context(), appID)
 	if err != nil {
 		Fail(c, http.StatusInternalServerError, err.Error())
 		return
 	}
-
 	Success(c, result)
 }
 
-func (h *WebhookHandler) ListDeliveries(c *gin.Context) {
-	var req dto.ListDeliveryReq
+func (h *WebhookHandler) ListLogs(c *gin.Context) {
+	var req dto.ListWebhookLogReq
 	c.ShouldBindQuery(&req)
-
-	userID := c.GetHeader("X-API-Key")
-	result, err := h.svc.ListDeliveries(c.Request.Context(), userID, &req)
+	appID := middleware.GetAppID(c)
+	result, err := h.svc.ListLogs(c.Request.Context(), appID, &req)
 	if err != nil {
 		Fail(c, http.StatusInternalServerError, err.Error())
 		return
 	}
-
 	Success(c, result)
 }
 
@@ -65,11 +61,10 @@ func (h *WebhookHandler) Resend(c *gin.Context) {
 		Fail(c, http.StatusBadRequest, "invalid id")
 		return
 	}
-
-	if err := h.svc.Resend(c.Request.Context(), id); err != nil {
+	appID := middleware.GetAppID(c)
+	if err := h.svc.Resend(c.Request.Context(), appID, id); err != nil {
 		Fail(c, http.StatusInternalServerError, err.Error())
 		return
 	}
-
 	Success(c, nil)
 }

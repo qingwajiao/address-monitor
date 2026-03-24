@@ -8,7 +8,7 @@ type SetWebhookURLReq struct {
 	URL string `json:"url" binding:"required,url"`
 }
 
-type ListDeliveryReq struct {
+type ListWebhookLogReq struct {
 	Chain  string `form:"chain"`
 	Status string `form:"status"`
 	Page   int    `form:"page"`
@@ -21,7 +21,7 @@ type WebhookURLResp struct {
 	URL string `json:"url"`
 }
 
-type DeliveryResp struct {
+type WebhookLogResp struct {
 	ID           uint64    `json:"id"`
 	EventID      string    `json:"event_id"`
 	Chain        string    `json:"chain"`
@@ -34,9 +34,9 @@ type DeliveryResp struct {
 	CreatedAt    time.Time `json:"created_at"`
 }
 
-type ListDeliveryResp struct {
-	List  []*DeliveryResp `json:"list"`
-	Total int64           `json:"total"`
-	Page  int             `json:"page"`
-	Size  int             `json:"size"`
+type ListWebhookLogResp struct {
+	List  []*WebhookLogResp `json:"list"`
+	Total int64             `json:"total"`
+	Page  int               `json:"page"`
+	Size  int               `json:"size"`
 }
