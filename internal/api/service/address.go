@@ -168,13 +168,22 @@ func (s *AddressService) Delete(ctx context.Context, appID, id uint64) error {
 		return err
 	}
 
-	s.rdb.SRem(ctx, fmt.Sprintf("watch:hot:%s", wa.Chain), wa.Address)
-	s.rdb.Del(ctx, fmt.Sprintf("sub_cache:%s:%s", wa.Chain, wa.Address))
-	s.rdb.Publish(ctx, matcher.AddressEventChannel, (&matcher.AddressEvent{
+	pipe := s.rdb.Pipeline()
+	pipe.SRem(ctx, fmt.Sprintf("watch:hot:%s", wa.Chain), wa.Address)
+	pipe.Del(ctx, fmt.Sprintf("sub_cache:%s:%s", wa.Chain, wa.Address))
+	pipe.Publish(ctx, matcher.AddressEventChannel, (&matcher.AddressEvent{
 		Type:    matcher.EventTypeRemove,
 		Chain:   wa.Chain,
 		Address: wa.Address,
 	}).Encode())
+	if _, err := pipe.Exec(ctx); err != nil {
+		zap.L().Warn("Redis 清理失败（不影响主流程）",
+			zap.Uint64("id", id),
+			zap.String("chain", wa.Chain),
+			zap.String("address", wa.Address),
+			zap.Error(err),
+		)
+	}
 
 	zap.L().Info("删除监控地址",
 		zap.Uint64("id", id),
@@ -217,14 +226,25 @@ func (s *AddressService) List(ctx context.Context, appID uint64, req *dto.ListAd
 
 func (s *AddressService) publishAddEvent(ctx context.Context, chain, address string) {
 	incrKey := fmt.Sprintf("bf:incremental:%s", chain)
-	s.rdb.SAdd(ctx, fmt.Sprintf("watch:hot:%s", chain), address)
-	s.rdb.LPush(ctx, incrKey, address)
-	s.rdb.LTrim(ctx, incrKey, 0, matcher.IncrementalMaxLen-1)
-	s.rdb.Publish(ctx, matcher.AddressEventChannel, (&matcher.AddressEvent{
+	hotKey := fmt.Sprintf("watch:hot:%s", chain)
+	event := (&matcher.AddressEvent{
 		Type:    matcher.EventTypeAdd,
 		Chain:   chain,
 		Address: address,
-	}).Encode())
+	}).Encode()
+
+	pipe := s.rdb.Pipeline()
+	pipe.SAdd(ctx, hotKey, address)
+	pipe.LPush(ctx, incrKey, address)
+	pipe.LTrim(ctx, incrKey, 0, matcher.IncrementalMaxLen-1)
+	pipe.Publish(ctx, matcher.AddressEventChannel, event)
+	if _, err := pipe.Exec(ctx); err != nil {
+		zap.L().Warn("Redis 写入失败（不影响主流程）",
+			zap.String("chain", chain),
+			zap.String("address", address),
+			zap.Error(err),
+		)
+	}
 }
 
 func toAddressResp(wa *store.WatchedAddress) *dto.AddressResp {

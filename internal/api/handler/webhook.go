@@ -44,7 +44,7 @@ func (h *WebhookHandler) GetWebhookURL(c *gin.Context) {
 
 func (h *WebhookHandler) ListLogs(c *gin.Context) {
 	var req dto.ListWebhookLogReq
-	c.ShouldBindQuery(&req)
+	_ = c.ShouldBindQuery(&req)
 	appID := middleware.GetAppID(c)
 	result, err := h.svc.ListLogs(c.Request.Context(), appID, &req)
 	if err != nil {

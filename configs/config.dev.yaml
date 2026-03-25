@@ -1,5 +1,5 @@
 ﻿server:
-  port: 8080
+  port: 8000
   api_key: "test-api-key-123"
 
 mysql:

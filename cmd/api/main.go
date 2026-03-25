@@ -124,7 +124,9 @@ func main() {
 
 	shutdownCtx, shutdownCancel := context.WithTimeout(context.Background(), 10*time.Second)
 	defer shutdownCancel()
-	srv.Shutdown(shutdownCtx)
+	if err := srv.Shutdown(shutdownCtx); err != nil {
+		zap.L().Error("HTTP 服务关闭异常", zap.Error(err))
+	}
 
 	zap.L().Info("API Service 已关闭")
 }

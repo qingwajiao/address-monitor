@@ -50,7 +50,7 @@ func (h *AddressHandler) BatchCreate(c *gin.Context) {
 
 func (h *AddressHandler) List(c *gin.Context) {
 	var req dto.ListAddressReq
-	c.ShouldBindQuery(&req)
+	_ = c.ShouldBindQuery(&req)
 	appID := middleware.GetAppID(c)
 	result, err := h.svc.List(c.Request.Context(), appID, &req)
 	if err != nil {
