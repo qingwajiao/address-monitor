@@ -75,9 +75,13 @@ func (m *Matcher) handleBatchAdd(ctx context.Context, chain string, count int) {
 		return
 	}
 
-	incrKey := fmt.Sprintf("bf:incremental:%s", chain)
+	bf, ok := m.bfs[chain]
+	if !ok {
+		zap.L().Warn("handleBatchAdd: 未知链", zap.String("chain", chain))
+		return
+	}
 
-	// 读取最新 count 条增量日志
+	incrKey := fmt.Sprintf("bf:incremental:%s", chain)
 	addrs, err := m.rdb.LRange(ctx, incrKey, 0, int64(count-1)).Result()
 	if err != nil {
 		zap.L().Error("读取增量日志失败",
@@ -89,9 +93,8 @@ func (m *Matcher) handleBatchAdd(ctx context.Context, chain string, count int) {
 
 	added := 0
 	for _, addr := range addrs {
-		key := chain + addr
-		if !m.bf.Test(key) {
-			m.bf.Add(key)
+		if !bf.Test(addr) {
+			bf.Add(addr)
 			added++
 		}
 	}
