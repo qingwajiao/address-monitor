@@ -81,7 +81,7 @@ address-monitor/
 │   ├── chain/                # 链监听层（Listener、Supervisor、BlockTracker）
 │   │   ├── evm/              # ETH/BSC HTTP 轮询
 │   │   ├── tron/             # TRON HTTP 轮询
-│   │   └── sol/              # SOL WebSocket 订阅
+│   │   └── sol/              # SOL HTTP 轮询
 │   ├── matcher/              # 地址匹配三层漏斗 + BF 管理
 │   ├── parser/               # 链上事件解析（标准化 NormalizedEvent）
 │   ├── dispatcher/           # 推送执行、重试、死信处理
@@ -253,12 +253,12 @@ func Verify(body []byte, secret, sigHeader string) bool {
 
 ## 推送重试策略
 
-| 重试次数 | 等待时间 | 累计等待 |
-|---|---|---|
-| 第 1 次 | 1 分钟 | 1 分钟 |
-| 第 2 次 | 5 分钟 | 6 分钟 |
-| 第 3 次 | 30 分钟 | 36 分钟 |
-| 第 5 次 | 放弃，打告警 | — |
+| 重试次数  | 等待时间   | 累计等待 |
+|-------|--------|---|
+| 第 1 次 | 1 分钟   | 1 分钟 |
+| 第 2 次 | 5 分钟   | 6 分钟 |
+| 第 3 次 | 30 分钟  | 36 分钟 |
+| 第 4 次 | 死信，打告警 | — |
 
 ---
 

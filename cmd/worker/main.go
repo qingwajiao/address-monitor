@@ -7,6 +7,8 @@ import (
 	"syscall"
 	"time"
 
+	"strings"
+
 	"address-monitor/internal/chain"
 	appconfig "address-monitor/internal/config"
 	"address-monitor/internal/matcher"
@@ -66,9 +68,17 @@ func main() {
 	}
 	ch.Close()
 
+	// 从配置提取已启用的链名
+	var chainNames []string
+	for name, chainCfg := range cfg.Chains {
+		if chainCfg.Enabled {
+			chainNames = append(chainNames, strings.ToUpper(name))
+		}
+	}
+
 	// 初始化 Matcher
 	addrStore := store.NewWatchedAddressStore(db)
-	m := matcher.New(rdb, addrStore)
+	m := matcher.New(rdb, addrStore, chainNames)
 
 	// 恢复 Bloom Filter
 	ctx, cancel := signal.NotifyContext(context.Background(), os.Interrupt, syscall.SIGTERM)
@@ -92,8 +102,7 @@ func main() {
 	m.StartAddressEventSubscriber(ctx)
 
 	// 启动热降冷定时任务（每天）
-	chainNames := []string{"ETH", "BSC", "TRON", "SOL"}
-	go m.StartColdDowngradeJob(ctx, chainNames)
+	go m.StartColdDowngradeJob(ctx)
 
 	// 初始化 Publisher 和分布式锁
 	publisher := mq.NewPublisher(mqConn)

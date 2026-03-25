@@ -15,14 +15,18 @@ import (
 )
 
 type Matcher struct {
-	bf        *bloom.Filter
+	bfs       map[string]*bloom.Filter // 每条链独立一个 BF
 	rdb       *redis.Client
 	addrStore *store.WatchedAddressStore
 }
 
-func New(rdb *redis.Client, addrStore *store.WatchedAddressStore) *Matcher {
+func New(rdb *redis.Client, addrStore *store.WatchedAddressStore, chains []string) *Matcher {
+	bfs := make(map[string]*bloom.Filter, len(chains))
+	for _, chain := range chains {
+		bfs[strings.ToUpper(chain)] = bloom.New(10_000_000, 0.001)
+	}
 	return &Matcher{
-		bf:        bloom.New(10_000_000, 0.001),
+		bfs:       bfs,
 		rdb:       rdb,
 		addrStore: addrStore,
 	}
@@ -31,14 +35,10 @@ func New(rdb *redis.Client, addrStore *store.WatchedAddressStore) *Matcher {
 // IsWatched 三层漏斗
 func (m *Matcher) IsWatched(ctx context.Context, chain, address string) ([]*store.WatchedAddress, error) {
 	addr := strings.ToLower(address)
-	key := chain + addr
 
-	// 第一层：Bloom Filter
-	if !m.bf.Test(key) {
-		//zap.L().Debug("BF 未命中",
-		//	zap.String("chain", chain),
-		//	zap.String("address", addr),
-		//)
+	// 第一层：Bloom Filter（按链独立）
+	bf, ok := m.bfs[chain]
+	if !ok || !bf.Test(addr) {
 		return nil, nil
 	}
 
@@ -73,8 +73,12 @@ func (m *Matcher) IsWatched(ctx context.Context, chain, address string) ([]*stor
 
 // AddToBF Worker 收到 Pub/Sub 消息后调用
 func (m *Matcher) AddToBF(chain, address string) {
-	key := chain + strings.ToLower(address)
-	m.bf.Add(key)
+	bf, ok := m.bfs[chain]
+	if !ok {
+		zap.L().Warn("AddToBF: 未知链", zap.String("chain", chain))
+		return
+	}
+	bf.Add(strings.ToLower(address))
 	zap.L().Info("新地址加入 Bloom Filter",
 		zap.String("chain", chain),
 		zap.String("address", address),
@@ -92,8 +96,11 @@ func (m *Matcher) LoadFromDB(ctx context.Context) error {
 			return err
 		}
 		for _, wa := range was {
-			key := wa.Chain + strings.ToLower(wa.Address)
-			m.bf.Add(key)
+			bf, ok := m.bfs[wa.Chain]
+			if !ok {
+				continue
+			}
+			bf.Add(strings.ToLower(wa.Address))
 		}
 		total += len(was)
 		if int64(page*size) >= count {
@@ -105,36 +112,50 @@ func (m *Matcher) LoadFromDB(ctx context.Context) error {
 	return nil
 }
 
-// SnapshotBF 序列化 BF 到 Redis
+// SnapshotBF 将每条链的 BF 独立序列化到 Redis
 func (m *Matcher) SnapshotBF(ctx context.Context) error {
-	data, err := m.bf.Encode()
-	if err != nil {
-		return err
-	}
-	return m.rdb.Set(ctx, "bf:snapshot", data, 0).Err()
-}
-
-// RestoreBF 从快照恢复
-func (m *Matcher) RestoreBF(ctx context.Context) (bool, error) {
-	data, err := m.rdb.Get(ctx, "bf:snapshot").Bytes()
-	if err != nil {
-		return false, nil
-	}
-	if err := m.bf.Decode(data); err != nil {
-		return false, err
-	}
-	for _, chain := range []string{"ETH", "BSC", "TRON", "SOL"} {
-		incrKey := fmt.Sprintf("bf:incremental:%s", chain)
-		addrs, err := m.rdb.LRange(ctx, incrKey, 0, -1).Result()
+	var lastErr error
+	for chain, bf := range m.bfs {
+		data, err := bf.Encode()
 		if err != nil {
+			zap.L().Warn("BF 序列化失败", zap.String("chain", chain), zap.Error(err))
+			lastErr = err
 			continue
 		}
-		for _, addr := range addrs {
-			m.bf.Add(chain + addr)
+		if err := m.rdb.Set(ctx, "bf:snapshot:"+chain, data, 0).Err(); err != nil {
+			zap.L().Warn("BF 快照写入 Redis 失败", zap.String("chain", chain), zap.Error(err))
+			lastErr = err
 		}
 	}
-	zap.L().Info("BF 从快照恢复成功")
-	return true, nil
+	return lastErr
+}
+
+// RestoreBF 从各链独立快照恢复，并应用增量日志
+func (m *Matcher) RestoreBF(ctx context.Context) (bool, error) {
+	anyRestored := false
+	for chain, bf := range m.bfs {
+		data, err := m.rdb.Get(ctx, "bf:snapshot:"+chain).Bytes()
+		if err != nil {
+			continue // 该链无快照，跳过
+		}
+		if err := bf.Decode(data); err != nil {
+			zap.L().Warn("BF 快照恢复失败", zap.String("chain", chain), zap.Error(err))
+			continue
+		}
+
+		// 应用增量日志
+		incrKey := fmt.Sprintf("bf:incremental:%s", chain)
+		addrs, err := m.rdb.LRange(ctx, incrKey, 0, -1).Result()
+		if err == nil {
+			for _, addr := range addrs {
+				bf.Add(addr)
+			}
+		}
+
+		zap.L().Info("BF 快照恢复成功", zap.String("chain", chain))
+		anyRestored = true
+	}
+	return anyRestored, nil
 }
 
 // StartSnapshotJob 定时快照（每5分钟）
@@ -168,16 +189,15 @@ func (m *Matcher) StartIncrementalSync(ctx context.Context) {
 }
 
 func (m *Matcher) syncIncremental(ctx context.Context) {
-	for _, chain := range []string{"ETH", "BSC", "TRON", "SOL"} {
+	for chain, bf := range m.bfs {
 		incrKey := fmt.Sprintf("bf:incremental:%s", chain)
 		addrs, err := m.rdb.LRange(ctx, incrKey, 0, -1).Result()
 		if err != nil {
 			continue
 		}
 		for _, addr := range addrs {
-			key := chain + addr
-			if !m.bf.Test(key) {
-				m.bf.Add(key)
+			if !bf.Test(addr) {
+				bf.Add(addr)
 				zap.L().Debug("增量日志补偿",
 					zap.String("chain", chain),
 					zap.String("address", addr),
@@ -188,7 +208,7 @@ func (m *Matcher) syncIncremental(ctx context.Context) {
 }
 
 // StartColdDowngradeJob 热降冷定时任务（每天）
-func (m *Matcher) StartColdDowngradeJob(ctx context.Context, chains []string) {
+func (m *Matcher) StartColdDowngradeJob(ctx context.Context) {
 	ticker := time.NewTicker(24 * time.Hour)
 	defer ticker.Stop()
 	for {
@@ -196,7 +216,7 @@ func (m *Matcher) StartColdDowngradeJob(ctx context.Context, chains []string) {
 		case <-ctx.Done():
 			return
 		case <-ticker.C:
-			for _, chain := range chains {
+			for chain := range m.bfs {
 				m.downgradeHotToCold(ctx, chain)
 			}
 		}
