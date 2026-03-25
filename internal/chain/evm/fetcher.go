@@ -18,13 +18,14 @@ import (
 
 type EVMFetcher struct {
 	chainName string
+	chainID   int64
 	client    *ethclient.Client
 	backup    *ethclient.Client
 	mu        sync.RWMutex
 	failCount int
 }
 
-func NewEVMFetcher(chainName, rpcURL, backupURL string) (*EVMFetcher, error) {
+func NewEVMFetcher(chainName, rpcURL, backupURL string, chainID int64) (*EVMFetcher, error) {
 	client, err := ethclient.Dial(rpcURL)
 	if err != nil {
 		return nil, fmt.Errorf("连接主路 RPC 失败 [%s]: %w", chainName, err)
@@ -37,6 +38,7 @@ func NewEVMFetcher(chainName, rpcURL, backupURL string) (*EVMFetcher, error) {
 
 	return &EVMFetcher{
 		chainName: chainName,
+		chainID:   chainID,
 		client:    client,
 		backup:    backup,
 	}, nil
@@ -91,8 +93,7 @@ func (f *EVMFetcher) FetchBlock(ctx context.Context, num uint64) ([]chain.RawEve
 	var events []chain.RawEvent
 
 	// 路径一：原生币转账（遍历 tx）
-	chainID := big.NewInt(f.chainIDInt())
-	signer := types.LatestSignerForChainID(chainID)
+	signer := types.LatestSignerForChainID(big.NewInt(f.chainID))
 
 	for _, tx := range block.Transactions() {
 		if tx.Value() == nil || tx.Value().Sign() <= 0 || tx.To() == nil {
@@ -171,16 +172,4 @@ func (f *EVMFetcher) resetFailure() {
 		f.failCount = 0
 	}
 	f.mu.Unlock()
-}
-
-// chainIDInt 返回链的 chain ID
-func (f *EVMFetcher) chainIDInt() int64 {
-	switch f.chainName {
-	case "ETH":
-		return 11155111
-	case "BSC":
-		return 56
-	default:
-		return 1
-	}
 }

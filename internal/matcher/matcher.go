@@ -35,10 +35,10 @@ func (m *Matcher) IsWatched(ctx context.Context, chain, address string) ([]*stor
 
 	// 第一层：Bloom Filter
 	if !m.bf.Test(key) {
-		zap.L().Debug("BF 未命中",
-			zap.String("chain", chain),
-			zap.String("address", addr),
-		)
+		//zap.L().Debug("BF 未命中",
+		//	zap.String("chain", chain),
+		//	zap.String("address", addr),
+		//)
 		return nil, nil
 	}
 

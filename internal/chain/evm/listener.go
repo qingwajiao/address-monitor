@@ -17,6 +17,7 @@ func NewEVMListener(name string, cfg config.ChainConfig, tracker *chain.BlockTra
 		toUpperChainName(name),
 		cfg.RPCURL,
 		cfg.BackupRPCURL,
+		cfg.ChainID,
 	)
 	if err != nil {
 		// 如果主路失败，尝试备路
@@ -24,6 +25,7 @@ func NewEVMListener(name string, cfg config.ChainConfig, tracker *chain.BlockTra
 			toUpperChainName(name),
 			cfg.BackupRPCURL,
 			cfg.RPCURL,
+			cfg.ChainID,
 		)
 		if err != nil {
 			panic("EVM fetcher 初始化失败: " + err.Error())

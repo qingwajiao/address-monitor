@@ -35,8 +35,8 @@ func (l *PollingListener) Chain() string { return l.fetcher.ChainName() }
 
 func (l *PollingListener) Start(ctx context.Context, eventCh chan<- RawEvent, errCh chan<- error) error {
 
-	key := fmt.Sprintf("last_block:%s", l.tracker.chain)
-	l.tracker.rdb.Set(ctx, key, 10491419, 0)
+	//key := fmt.Sprintf("last_block:%s", l.tracker.chain)
+	//l.tracker.rdb.Set(ctx, key, 10491419, 0)
 	// 初始化起始块号
 	_, err := l.tracker.Init(ctx, func() (uint64, error) {
 		return l.fetcher.LatestBlockNum(ctx)

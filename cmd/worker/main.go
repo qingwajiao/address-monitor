@@ -88,6 +88,9 @@ func main() {
 	// 启动 BF 定时快照（每 5 分钟）
 	go m.StartSnapshotJob(ctx)
 
+	// 启动地址变更事件订阅（API 新增/删除地址时实时更新 BF）
+	m.StartAddressEventSubscriber(ctx)
+
 	// 启动热降冷定时任务（每天）
 	chainNames := []string{"ETH", "BSC", "TRON", "SOL"}
 	go m.StartColdDowngradeJob(ctx, chainNames)

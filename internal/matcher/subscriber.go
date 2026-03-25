@@ -70,16 +70,6 @@ func (m *Matcher) handleAddressEvent(ctx context.Context, payload string) {
 	}
 }
 
-// AddToBF Worker 收到 Pub/Sub 消息后调用，更新 BF
-//func (m *Matcher) AddToBF(chain, address string) {
-//	key := chain + strings.ToLower(address)
-//	m.bf.Add(key)
-//	zap.L().Info("新地址加入 Bloom Filter",
-//		zap.String("chain", chain),
-//		zap.String("address", address),
-//	)
-//}
-
 func (m *Matcher) handleBatchAdd(ctx context.Context, chain string, count int) {
 	if count <= 0 {
 		return

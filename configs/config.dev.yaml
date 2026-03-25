@@ -23,7 +23,7 @@ chains:
     chain_id: 11155111
     rpc_url: "https://ethereum-sepolia-rpc.publicnode.com"
     backup_rpc_url: "https://1rpc.io/sepolia"
-    poll_interval_seconds: 6
+    poll_interval_seconds: 8
     confirmations: 12
   bsc:
     enabled: false
@@ -31,7 +31,7 @@ chains:
     chain_id: 97
     rpc_url: "https://bsc-testnet-rpc.publicnode.com"
     backup_rpc_url: "https://data-seed-prebsc-1-s1.binance.org:8545"
-    poll_interval_seconds: 3
+    poll_interval_seconds: 5
     confirmations: 15
   tron:
     enabled: false

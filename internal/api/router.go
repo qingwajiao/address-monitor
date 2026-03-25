@@ -59,7 +59,7 @@ func NewRouter(
 	// API Key 鉴权路由（数据接口）
 	v1api := r.Group("/v1",
 		middleware.APIKeyAuth(appStore),
-		middleware.RateLimit(),
+		//middleware.RateLimit(),
 	)
 	{
 		v1api.POST("/addresses", addrHandler.Create)

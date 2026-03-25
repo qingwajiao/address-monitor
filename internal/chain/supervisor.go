@@ -61,7 +61,7 @@ func (s *Supervisor) Run(ctx context.Context) {
 		enabledChains = "eth"
 	}
 
-	eventCh := make(chan RawEvent, 1000)
+	eventCh := make(chan RawEvent, 1000) // TODO 数据撑满导致阻塞？
 	errCh := make(chan error, 100)
 
 	syncStore := store.NewChainSyncStore(s.db)
@@ -181,12 +181,6 @@ func (s *Supervisor) handleRawEvent(
 			continue
 		}
 
-		if event.BlockNumber == 10491419 {
-			zap.L().Info("目标区块")
-		}
-		if event.WatchedAddress == "0x947faa43661d3d672b54aa858619272d208bdb5a" {
-			zap.L().Info("命中地址")
-		}
 		if len(subs) == 0 {
 			continue // 不在监控列表，跳过
 		}
