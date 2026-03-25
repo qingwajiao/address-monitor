@@ -94,29 +94,14 @@ func main() {
 		DevMode:  cfg.Email.DevMode,
 	})
 
-	// 初始化 AuthService
-	authSvc := service.NewAuthService(
-		userStore,
-		emailVerifyStore,
-		refreshTokenStore,
-		jwtManager,
-		emailSender,
-		cfg.JWT.BaseURL,
-	)
+	// 初始化 Service
+	authSvc := service.NewAuthService(userStore, emailVerifyStore, refreshTokenStore, jwtManager, emailSender, cfg.JWT.BaseURL)
+	appSvc := service.NewAppService(appStore)
+	addrSvc := service.NewAddressService(addrStore, rdb)
+	webhookSvc := service.NewWebhookService(webhookStore, publisher, rdb)
 
 	// 启动 HTTP 服务
-	router := api.NewRouter(
-		appStore,
-		addrStore,
-		webhookStore,
-		userStore,
-		emailVerifyStore,
-		refreshTokenStore,
-		rdb,
-		publisher,
-		jwtManager,
-		authSvc,
-	)
+	router := api.NewRouter(appStore, appSvc, addrSvc, webhookSvc, authSvc, jwtManager)
 
 	srv := &http.Server{
 		Addr:    fmt.Sprintf(":%d", cfg.Server.Port),

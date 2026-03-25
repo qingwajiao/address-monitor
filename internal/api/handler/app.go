@@ -57,13 +57,7 @@ func (h *AppHandler) Get(c *gin.Context) {
 	userID := middleware.GetUserID(c)
 	result, err := h.svc.Get(c.Request.Context(), userID, appID)
 	if err != nil {
-		status := http.StatusInternalServerError
-		if errors.Is(err, service.ErrAppNotFound) {
-			status = http.StatusNotFound
-		} else if errors.Is(err, service.ErrAppForbidden) {
-			status = http.StatusForbidden
-		}
-		Fail(c, status, err.Error())
+		Fail(c, appErrStatus(err), err.Error())
 		return
 	}
 	Success(c, result)
@@ -85,13 +79,7 @@ func (h *AppHandler) Update(c *gin.Context) {
 	userID := middleware.GetUserID(c)
 	result, err := h.svc.Update(c.Request.Context(), userID, appID, &req)
 	if err != nil {
-		status := http.StatusInternalServerError
-		if errors.Is(err, service.ErrAppNotFound) {
-			status = http.StatusNotFound
-		} else if errors.Is(err, service.ErrAppForbidden) {
-			status = http.StatusForbidden
-		}
-		Fail(c, status, err.Error())
+		Fail(c, appErrStatus(err), err.Error())
 		return
 	}
 	Success(c, result)
@@ -106,16 +94,21 @@ func (h *AppHandler) Delete(c *gin.Context) {
 
 	userID := middleware.GetUserID(c)
 	if err := h.svc.Delete(c.Request.Context(), userID, appID); err != nil {
-		status := http.StatusInternalServerError
-		if errors.Is(err, service.ErrAppNotFound) {
-			status = http.StatusNotFound
-		} else if errors.Is(err, service.ErrAppForbidden) {
-			status = http.StatusForbidden
-		}
-		Fail(c, status, err.Error())
+		Fail(c, appErrStatus(err), err.Error())
 		return
 	}
 	Success(c, nil)
+}
+
+func appErrStatus(err error) int {
+	switch {
+	case errors.Is(err, service.ErrAppNotFound):
+		return http.StatusNotFound
+	case errors.Is(err, service.ErrAppForbidden):
+		return http.StatusForbidden
+	default:
+		return http.StatusInternalServerError
+	}
 }
 
 func (h *AppHandler) ResetAPIKey(c *gin.Context) {

@@ -2,7 +2,6 @@ package handler
 
 import (
 	"net/http"
-	"strconv"
 
 	"address-monitor/internal/api/dto"
 	"address-monitor/internal/api/middleware"
@@ -62,7 +61,7 @@ func (h *AddressHandler) List(c *gin.Context) {
 }
 
 func (h *AddressHandler) Get(c *gin.Context) {
-	id, err := strconv.ParseUint(c.Param("id"), 10, 64)
+	id, err := parseID(c)
 	if err != nil {
 		Fail(c, http.StatusBadRequest, "invalid id")
 		return
@@ -77,7 +76,7 @@ func (h *AddressHandler) Get(c *gin.Context) {
 }
 
 func (h *AddressHandler) Delete(c *gin.Context) {
-	id, err := strconv.ParseUint(c.Param("id"), 10, 64)
+	id, err := parseID(c)
 	if err != nil {
 		Fail(c, http.StatusBadRequest, "invalid id")
 		return

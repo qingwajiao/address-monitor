@@ -2,6 +2,7 @@ package service
 
 import (
 	"context"
+	"errors"
 	"fmt"
 	"strings"
 
@@ -12,6 +13,11 @@ import (
 	"github.com/go-redis/redis/v8"
 	amqp "github.com/rabbitmq/amqp091-go"
 	"go.uber.org/zap"
+)
+
+var (
+	ErrWebhookLogNotFound  = errors.New("推送记录不存在")
+	ErrWebhookLogForbidden = errors.New("无权操作此记录")
 )
 
 type WebhookService struct {
@@ -82,10 +88,10 @@ func (s *WebhookService) GetWebhookURL(ctx context.Context, appID uint64) (*dto.
 func (s *WebhookService) Resend(ctx context.Context, appID, id uint64) error {
 	log, err := s.webhookStore.GetByID(ctx, id)
 	if err != nil {
-		return fmt.Errorf("推送记录不存在")
+		return ErrWebhookLogNotFound
 	}
 	if log.AppID != appID {
-		return fmt.Errorf("无权操作此记录")
+		return ErrWebhookLogForbidden
 	}
 
 	if err := s.publisher.Publish(

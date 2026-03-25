@@ -1,6 +1,7 @@
 package middleware
 
 import (
+	"net/http"
 	"sync"
 	"time"
 
@@ -29,7 +30,6 @@ func (r *rateLimiter) allow(key string) bool {
 	now := time.Now()
 	windowStart := now.Add(-r.window)
 
-	// 清理过期请求
 	times := r.requests[key]
 	valid := times[:0]
 	for _, t := range times {
@@ -56,7 +56,11 @@ func RateLimit() gin.HandlerFunc {
 			key = c.ClientIP()
 		}
 		if !limiter.allow(key) {
-			c.AbortWithStatusJSON(429, gin.H{"error": "rate limit exceeded"})
+			c.AbortWithStatusJSON(http.StatusTooManyRequests, gin.H{
+				"code": 0,
+				"msg":  "请求过于频繁，请稍后再试",
+				"data": nil,
+			})
 			return
 		}
 		c.Next()

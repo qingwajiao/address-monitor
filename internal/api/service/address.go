@@ -2,6 +2,7 @@ package service
 
 import (
 	"context"
+	"errors"
 	"fmt"
 	"strings"
 
@@ -11,6 +12,11 @@ import (
 
 	"github.com/go-redis/redis/v8"
 	"go.uber.org/zap"
+)
+
+var (
+	ErrAddressNotFound  = errors.New("地址不存在")
+	ErrAddressForbidden = errors.New("无权操作此地址")
 )
 
 type AddressService struct {
@@ -111,26 +117,24 @@ func (s *AddressService) BatchCreate(ctx context.Context, appID uint64, req *dto
 		}
 	}
 
-	// Redis Pipeline 批量操作
+	// Redis Pipeline 批量操作（只推送入库成功的地址）
 	if len(successList) > 0 {
 		hotKey := fmt.Sprintf("watch:hot:%s", chain)
 		incrKey := fmt.Sprintf("bf:incremental:%s", chain)
 
-		hotMembers := make([]interface{}, len(validAddrs))
-		incrMembers := make([]interface{}, len(validAddrs))
-		for i, addr := range validAddrs {
-			hotMembers[i] = addr
-			incrMembers[i] = addr
+		members := make([]interface{}, len(successList))
+		for i, item := range successList {
+			members[i] = item.Address
 		}
 
 		pipe := s.rdb.Pipeline()
-		pipe.SAdd(ctx, hotKey, hotMembers...)
-		pipe.LPush(ctx, incrKey, incrMembers...)
+		pipe.SAdd(ctx, hotKey, members...)
+		pipe.LPush(ctx, incrKey, members...)
 		pipe.LTrim(ctx, incrKey, 0, matcher.IncrementalMaxLen-1)
 		pipe.Publish(ctx, matcher.AddressEventChannel, (&matcher.AddressEvent{
 			Type:  matcher.EventTypeBatchAdd,
 			Chain: chain,
-			Count: len(validAddrs),
+			Count: len(successList),
 		}).Encode())
 		if _, err := pipe.Exec(ctx); err != nil {
 			zap.L().Warn("Redis Pipeline 执行失败", zap.Error(err))
@@ -154,10 +158,10 @@ func (s *AddressService) BatchCreate(ctx context.Context, appID uint64, req *dto
 func (s *AddressService) Delete(ctx context.Context, appID, id uint64) error {
 	wa, err := s.addrStore.GetByID(ctx, id)
 	if err != nil {
-		return fmt.Errorf("地址不存在")
+		return ErrAddressNotFound
 	}
 	if wa.AppID != appID {
-		return fmt.Errorf("无权操作此地址")
+		return ErrAddressForbidden
 	}
 
 	if err := s.addrStore.Delete(ctx, id); err != nil {
@@ -183,10 +187,10 @@ func (s *AddressService) Delete(ctx context.Context, appID, id uint64) error {
 func (s *AddressService) GetByID(ctx context.Context, appID, id uint64) (*dto.AddressResp, error) {
 	wa, err := s.addrStore.GetByID(ctx, id)
 	if err != nil {
-		return nil, fmt.Errorf("地址不存在")
+		return nil, ErrAddressNotFound
 	}
 	if wa.AppID != appID {
-		return nil, fmt.Errorf("无权操作此地址")
+		return nil, ErrAddressForbidden
 	}
 	return toAddressResp(wa), nil
 }

@@ -10,7 +10,6 @@ import (
 
 	"github.com/google/uuid"
 	"go.uber.org/zap"
-	"gorm.io/gorm"
 )
 
 var (
@@ -63,83 +62,78 @@ func (s *AppService) List(ctx context.Context, userID uint64) ([]*dto.AppResp, e
 }
 
 func (s *AppService) Get(ctx context.Context, userID, appID uint64) (*dto.AppResp, error) {
-	app, err := s.appStore.GetByID(ctx, appID)
+	app, err := s.getOwned(ctx, userID, appID)
 	if err != nil {
-		if errors.Is(err, gorm.ErrRecordNotFound) {
-			return nil, ErrAppNotFound
-		}
 		return nil, err
-	}
-	if app.UserID != userID {
-		return nil, ErrAppForbidden
 	}
 	return toAppResp(app, false), nil
 }
 
 func (s *AppService) Update(ctx context.Context, userID, appID uint64, req *dto.UpdateAppReq) (*dto.AppResp, error) {
-	app, err := s.appStore.GetByID(ctx, appID)
+	app, err := s.getOwned(ctx, userID, appID)
 	if err != nil {
-		return nil, ErrAppNotFound
-	}
-	if app.UserID != userID {
-		return nil, ErrAppForbidden
+		return nil, err
 	}
 
 	updates := map[string]interface{}{}
 	if req.Name != "" {
 		updates["name"] = req.Name
+		app.Name = req.Name
 	}
 	if req.CallbackURL != "" {
 		updates["callback_url"] = req.CallbackURL
+		app.CallbackURL = req.CallbackURL
 	}
 
 	if err := s.appStore.Update(ctx, appID, updates); err != nil {
 		return nil, err
 	}
-
-	// 更新缓存失效
-	app.Name = req.Name
-	app.CallbackURL = req.CallbackURL
 	return toAppResp(app, false), nil
 }
 
 func (s *AppService) Delete(ctx context.Context, userID, appID uint64) error {
-	app, err := s.appStore.GetByID(ctx, appID)
-	if err != nil {
-		return ErrAppNotFound
-	}
-	if app.UserID != userID {
-		return ErrAppForbidden
+	if _, err := s.getOwned(ctx, userID, appID); err != nil {
+		return err
 	}
 	return s.appStore.Delete(ctx, appID)
 }
 
 // ResetAPIKey 重置 API Key，旧 key 立即失效
 func (s *AppService) ResetAPIKey(ctx context.Context, userID, appID uint64) (*dto.AppResp, error) {
-	app, err := s.appStore.GetByID(ctx, appID)
+	app, err := s.getOwned(ctx, userID, appID)
 	if err != nil {
-		return nil, ErrAppNotFound
-	}
-	if app.UserID != userID {
-		return nil, ErrAppForbidden
+		return nil, err
 	}
 
 	newKey := generateAPIKey()
-	if err := s.appStore.Update(ctx, appID, map[string]interface{}{
-		"api_key": newKey,
-	}); err != nil {
+	if err := s.appStore.Update(ctx, appID, map[string]interface{}{"api_key": newKey}); err != nil {
 		return nil, err
 	}
 
 	app.APIKey = newKey
-	zap.L().Info("重置 API Key",
-		zap.Uint64("app_id", appID),
-	)
+	zap.L().Info("重置 API Key", zap.Uint64("app_id", appID))
 	return toAppResp(app, true), nil
 }
 
 // ResetSecret 重置签名密钥
 func (s *AppService) ResetSecret(ctx context.Context, userID, appID uint64) (*dto.AppResp, error) {
+	app, err := s.getOwned(ctx, userID, appID)
+	if err != nil {
+		return nil, err
+	}
+
+	newSecret := generateSecret()
+	if err := s.appStore.Update(ctx, appID, map[string]interface{}{"secret": newSecret}); err != nil {
+		return nil, err
+	}
+
+	app.Secret = newSecret
+	zap.L().Info("重置 Secret", zap.Uint64("app_id", appID))
+	return toAppResp(app, true), nil
+}
+
+// getOwned 获取并校验 app 归属权
+func (s *AppService) getOwned(ctx context.Context, userID, appID uint64) (*store.App, error) {
 	app, err := s.appStore.GetByID(ctx, appID)
 	if err != nil {
 		return nil, ErrAppNotFound
@@ -147,19 +141,7 @@ func (s *AppService) ResetSecret(ctx context.Context, userID, appID uint64) (*dt
 	if app.UserID != userID {
 		return nil, ErrAppForbidden
 	}
-
-	newSecret := generateSecret()
-	if err := s.appStore.Update(ctx, appID, map[string]interface{}{
-		"secret": newSecret,
-	}); err != nil {
-		return nil, err
-	}
-
-	app.Secret = newSecret
-	zap.L().Info("重置 Secret",
-		zap.Uint64("app_id", appID),
-	)
-	return toAppResp(app, true), nil
+	return app, nil
 }
 
 // ── 工具函数 ──────────────────────────────────────────────

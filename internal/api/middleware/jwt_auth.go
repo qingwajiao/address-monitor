@@ -2,7 +2,6 @@ package middleware
 
 import (
 	"errors"
-	"net/http"
 	"strings"
 
 	jwtpkg "address-monitor/pkg/jwt"
@@ -19,19 +18,13 @@ func JWTAuth(jwtManager *jwtpkg.Manager) gin.HandlerFunc {
 	return func(c *gin.Context) {
 		authHeader := c.GetHeader("Authorization")
 		if authHeader == "" {
-			c.AbortWithStatusJSON(http.StatusUnauthorized, gin.H{
-				"code": 0,
-				"msg":  "缺少 Authorization header",
-			})
+			abortUnauthorized(c, "缺少 Authorization header")
 			return
 		}
 
 		parts := strings.SplitN(authHeader, " ", 2)
 		if len(parts) != 2 || strings.ToLower(parts[0]) != "bearer" {
-			c.AbortWithStatusJSON(http.StatusUnauthorized, gin.H{
-				"code": 0,
-				"msg":  "Authorization 格式错误，应为 Bearer {token}",
-			})
+			abortUnauthorized(c, "Authorization 格式错误，应为 Bearer {token}")
 			return
 		}
 
@@ -41,14 +34,10 @@ func JWTAuth(jwtManager *jwtpkg.Manager) gin.HandlerFunc {
 			if errors.Is(err, jwtpkg.ErrTokenExpired) {
 				msg = "token 已过期"
 			}
-			c.AbortWithStatusJSON(http.StatusUnauthorized, gin.H{
-				"code": 0,
-				"msg":  msg,
-			})
+			abortUnauthorized(c, msg)
 			return
 		}
 
-		// 把用户信息注入 context
 		c.Set(ContextKeyUserID, claims.UserID)
 		c.Set(ContextKeyEmail, claims.Email)
 		c.Next()

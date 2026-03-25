@@ -17,24 +17,16 @@ func APIKeyAuth(appStore *store.AppStore) gin.HandlerFunc {
 	return func(c *gin.Context) {
 		apiKey := c.GetHeader("X-API-Key")
 		if apiKey == "" {
-			c.AbortWithStatusJSON(http.StatusUnauthorized, gin.H{
-				"code": 0,
-				"msg":  "缺少 X-API-Key header",
-			})
+			abortUnauthorized(c, "缺少 X-API-Key header")
 			return
 		}
 
-		// 查数据库，找到对应的 app
 		app, err := appStore.GetByAPIKey(c.Request.Context(), apiKey)
 		if err != nil {
-			c.AbortWithStatusJSON(http.StatusUnauthorized, gin.H{
-				"code": 0,
-				"msg":  "无效的 API Key",
-			})
+			abortUnauthorized(c, "无效的 API Key")
 			return
 		}
 
-		// 把 app 信息注入 context
 		c.Set(ContextKeyAppID, app.ID)
 		c.Set(ContextKeySecret, app.Secret)
 		c.Next()
@@ -49,4 +41,13 @@ func GetAppID(c *gin.Context) uint64 {
 		}
 	}
 	return 0
+}
+
+// abortUnauthorized 统一的 401 响应，格式与 handler.Fail 一致
+func abortUnauthorized(c *gin.Context, msg string) {
+	c.AbortWithStatusJSON(http.StatusUnauthorized, gin.H{
+		"code": 0,
+		"msg":  msg,
+		"data": nil,
+	})
 }
