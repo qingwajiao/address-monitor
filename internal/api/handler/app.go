@@ -106,6 +106,9 @@ func appErrStatus(err error) int {
 		return http.StatusNotFound
 	case errors.Is(err, service.ErrAppForbidden):
 		return http.StatusForbidden
+	case errors.Is(err, service.ErrAppNameExists),
+		errors.Is(err, service.ErrAppCallbackURLExists):
+		return http.StatusConflict
 	default:
 		return http.StatusInternalServerError
 	}

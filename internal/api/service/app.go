@@ -13,8 +13,10 @@ import (
 )
 
 var (
-	ErrAppNotFound  = errors.New("应用不存在")
-	ErrAppForbidden = errors.New("无权操作此应用")
+	ErrAppNotFound          = errors.New("应用不存在")
+	ErrAppForbidden         = errors.New("无权操作此应用")
+	ErrAppNameExists        = errors.New("应用名称已存在")
+	ErrAppCallbackURLExists = errors.New("CallbackURL 已被其他应用使用")
 )
 
 type AppService struct {
@@ -26,6 +28,10 @@ func NewAppService(appStore *store.AppStore) *AppService {
 }
 
 func (s *AppService) Create(ctx context.Context, userID uint64, req *dto.CreateAppReq) (*dto.AppResp, error) {
+	if err := s.checkDuplicate(ctx, userID, req.Name, req.CallbackURL, 0); err != nil {
+		return nil, err
+	}
+
 	app := &store.App{
 		UserID:      userID,
 		Name:        req.Name,
@@ -72,6 +78,10 @@ func (s *AppService) Get(ctx context.Context, userID, appID uint64) (*dto.AppRes
 func (s *AppService) Update(ctx context.Context, userID, appID uint64, req *dto.UpdateAppReq) (*dto.AppResp, error) {
 	app, err := s.getOwned(ctx, userID, appID)
 	if err != nil {
+		return nil, err
+	}
+
+	if err := s.checkDuplicate(ctx, userID, req.Name, req.CallbackURL, appID); err != nil {
 		return nil, err
 	}
 
@@ -130,6 +140,30 @@ func (s *AppService) ResetSecret(ctx context.Context, userID, appID uint64) (*dt
 	app.Secret = newSecret
 	zap.L().Info("重置 Secret", zap.Uint64("app_id", appID))
 	return toAppResp(app, true), nil
+}
+
+// checkDuplicate 检查 name 和 callbackURL 在同一用户下是否重复
+// excludeID 为 0 表示 Create，非 0 表示 Update（排除自身）
+func (s *AppService) checkDuplicate(ctx context.Context, userID uint64, name, callbackURL string, excludeID uint64) error {
+	if name != "" {
+		exists, err := s.appStore.NameExists(ctx, userID, name, excludeID)
+		if err != nil {
+			return err
+		}
+		if exists {
+			return ErrAppNameExists
+		}
+	}
+	if callbackURL != "" {
+		exists, err := s.appStore.CallbackURLExists(ctx, userID, callbackURL, excludeID)
+		if err != nil {
+			return err
+		}
+		if exists {
+			return ErrAppCallbackURLExists
+		}
+	}
+	return nil
 }
 
 // getOwned 获取并校验 app 归属权

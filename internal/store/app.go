@@ -71,3 +71,21 @@ func (s *AppStore) Delete(ctx context.Context, id uint64) error {
 		Where("id = ?", id).
 		Update("status", 0).Error
 }
+
+// NameExists 检查同一用户下是否已有同名应用，excludeID 用于 Update 时排除自身
+func (s *AppStore) NameExists(ctx context.Context, userID uint64, name string, excludeID uint64) (bool, error) {
+	var count int64
+	err := s.db.WithContext(ctx).Model(&App{}).
+		Where("user_id = ? AND name = ? AND status = 1 AND id != ?", userID, name, excludeID).
+		Count(&count).Error
+	return count > 0, err
+}
+
+// CallbackURLExists 检查同一用户下是否已有相同 CallbackURL 的应用，excludeID 用于 Update 时排除自身
+func (s *AppStore) CallbackURLExists(ctx context.Context, userID uint64, url string, excludeID uint64) (bool, error) {
+	var count int64
+	err := s.db.WithContext(ctx).Model(&App{}).
+		Where("user_id = ? AND callback_url = ? AND status = 1 AND id != ?", userID, url, excludeID).
+		Count(&count).Error
+	return count > 0, err
+}
