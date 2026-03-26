@@ -54,11 +54,9 @@ func (s *WatchedAddressStore) ListByApp(ctx context.Context, appID uint64, chain
 	var total int64
 	offset := (page - 1) * size
 
-	db := s.db.WithContext(ctx).Model(&WatchedAddress{}).
-		Where("app_id = ? AND status = 1", appID)
-
+	db := s.db.WithContext(ctx).Model(&WatchedAddress{}).Where("status = 1")
 	if appID > 0 {
-		db = db.Where("app_id = ?", appID) // appID=0 时查全部
+		db = db.Where("app_id = ?", appID)
 	}
 	if chain != "" {
 		db = db.Where("chain = ?", chain)
@@ -72,6 +70,16 @@ func (s *WatchedAddressStore) ListByApp(ctx context.Context, appID uint64, chain
 		return nil, 0, err
 	}
 	return was, total, nil
+}
+
+// ListAfterID 查询 id > sinceID 的所有有效地址，用于增量同步 BF
+func (s *WatchedAddressStore) ListAfterID(ctx context.Context, sinceID uint64) ([]*WatchedAddress, error) {
+	var was []*WatchedAddress
+	err := s.db.WithContext(ctx).
+		Where("id > ? AND status = 1", sinceID).
+		Order("id ASC").
+		Find(&was).Error
+	return was, err
 }
 
 // ListByChainAddress 地址匹配时使用，查询命中的所有有效监控记录

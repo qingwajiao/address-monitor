@@ -15,9 +15,10 @@ import (
 )
 
 type Matcher struct {
-	bfs       map[string]*bloom.Filter // 每条链独立一个 BF
-	rdb       *redis.Client
-	addrStore *store.WatchedAddressStore
+	bfs          map[string]*bloom.Filter // 每条链独立一个 BF
+	lastDBSyncID uint64                   // MySQL 增量同步水位线
+	rdb          *redis.Client
+	addrStore    *store.WatchedAddressStore
 }
 
 func New(rdb *redis.Client, addrStore *store.WatchedAddressStore, chains []string) *Matcher {
@@ -85,11 +86,12 @@ func (m *Matcher) AddToBF(chain, address string) {
 	)
 }
 
-// LoadFromDB Worker 启动时全量加载
+// LoadFromDB Worker 启动时全量加载，完成后设置 lastDBSyncID 水位线
 func (m *Matcher) LoadFromDB(ctx context.Context) error {
 	page := 1
 	size := 10000
 	total := 0
+	var maxID uint64
 	for {
 		was, count, err := m.addrStore.ListByApp(ctx, 0, "", page, size)
 		if err != nil {
@@ -101,6 +103,9 @@ func (m *Matcher) LoadFromDB(ctx context.Context) error {
 				continue
 			}
 			bf.Add(strings.ToLower(wa.Address))
+			if wa.ID > maxID {
+				maxID = wa.ID
+			}
 		}
 		total += len(was)
 		if int64(page*size) >= count {
@@ -108,11 +113,12 @@ func (m *Matcher) LoadFromDB(ctx context.Context) error {
 		}
 		page++
 	}
-	zap.L().Info("BF 全量构建完成", zap.Int("total", total))
+	m.lastDBSyncID = maxID
+	zap.L().Info("BF 全量构建完成", zap.Int("total", total), zap.Uint64("max_id", maxID))
 	return nil
 }
 
-// SnapshotBF 将每条链的 BF 独立序列化到 Redis
+// SnapshotBF 将每条链的 BF 独立序列化到 Redis，同时保存 lastDBSyncID 水位线
 func (m *Matcher) SnapshotBF(ctx context.Context) error {
 	var lastErr error
 	for chain, bf := range m.bfs {
@@ -127,10 +133,15 @@ func (m *Matcher) SnapshotBF(ctx context.Context) error {
 			lastErr = err
 		}
 	}
+	// 保存水位线，供重启后增量补偿使用
+	if err := m.rdb.Set(ctx, "bf:snapshot:maxid", m.lastDBSyncID, 0).Err(); err != nil {
+		zap.L().Warn("BF 水位线写入 Redis 失败", zap.Error(err))
+		lastErr = err
+	}
 	return lastErr
 }
 
-// RestoreBF 从各链独立快照恢复，并应用增量日志
+// RestoreBF 从各链独立快照恢复，恢复后从 MySQL 补偿快照之后的新增地址
 func (m *Matcher) RestoreBF(ctx context.Context) (bool, error) {
 	anyRestored := false
 	for chain, bf := range m.bfs {
@@ -142,20 +153,24 @@ func (m *Matcher) RestoreBF(ctx context.Context) (bool, error) {
 			zap.L().Warn("BF 快照恢复失败", zap.String("chain", chain), zap.Error(err))
 			continue
 		}
-
-		// 应用增量日志
-		incrKey := fmt.Sprintf("bf:incremental:%s", chain)
-		addrs, err := m.rdb.LRange(ctx, incrKey, 0, -1).Result()
-		if err == nil {
-			for _, addr := range addrs {
-				bf.Add(addr)
-			}
-		}
-
 		zap.L().Info("BF 快照恢复成功", zap.String("chain", chain))
 		anyRestored = true
 	}
-	return anyRestored, nil
+
+	if !anyRestored {
+		return false, nil
+	}
+
+	// 读取快照时的水位线，从 MySQL 补偿快照之后新增的地址
+	snapshotMaxID, err := m.rdb.Get(ctx, "bf:snapshot:maxid").Uint64()
+	if err != nil {
+		zap.L().Warn("读取 BF 水位线失败，跳过增量补偿", zap.Error(err))
+		return true, nil
+	}
+	m.lastDBSyncID = snapshotMaxID
+	m.syncFromDB(ctx)
+
+	return true, nil
 }
 
 // StartSnapshotJob 定时快照（每5分钟）
@@ -186,6 +201,52 @@ func (m *Matcher) StartIncrementalSync(ctx context.Context) {
 			m.syncIncremental(ctx)
 		}
 	}
+}
+
+// StartDBIncrementalSync 定时从 MySQL 增量同步（每5分钟），兜底 Redis 不可用时的漏检
+func (m *Matcher) StartDBIncrementalSync(ctx context.Context) {
+	ticker := time.NewTicker(5 * time.Minute)
+	defer ticker.Stop()
+	for {
+		select {
+		case <-ctx.Done():
+			return
+		case <-ticker.C:
+			m.syncFromDB(ctx)
+		}
+	}
+}
+
+// syncFromDB 从 MySQL 拉取 lastDBSyncID 之后的新增地址补入 BF，并推进水位线
+func (m *Matcher) syncFromDB(ctx context.Context) {
+	sinceID := m.lastDBSyncID
+	was, err := m.addrStore.ListAfterID(ctx, sinceID)
+	if err != nil {
+		zap.L().Warn("MySQL 增量同步失败", zap.Error(err))
+		return
+	}
+	if len(was) == 0 {
+		return
+	}
+
+	added := 0
+	var maxID uint64
+	for _, wa := range was {
+		if bf, ok := m.bfs[wa.Chain]; ok {
+			bf.Add(strings.ToLower(wa.Address))
+			added++
+		}
+		if wa.ID > maxID {
+			maxID = wa.ID
+		}
+	}
+	m.lastDBSyncID = maxID
+
+	zap.L().Info("MySQL 增量同步完成",
+		zap.Uint64("since_id", sinceID),
+		zap.Uint64("max_id", maxID),
+		zap.Int("added", added),
+	)
 }
 
 func (m *Matcher) syncIncremental(ctx context.Context) {

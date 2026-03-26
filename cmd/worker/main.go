@@ -101,6 +101,9 @@ func main() {
 	// 启动地址变更事件订阅（API 新增/删除地址时实时更新 BF）
 	m.StartAddressEventSubscriber(ctx)
 
+	// 启动 MySQL 增量同步（兜底 Redis 不可用时的漏检，每 5 分钟）
+	go m.StartDBIncrementalSync(ctx)
+
 	// 启动热降冷定时任务（每天）
 	go m.StartColdDowngradeJob(ctx)
 
