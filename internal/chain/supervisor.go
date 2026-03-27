@@ -20,14 +20,20 @@ import (
 	"gorm.io/gorm"
 )
 
+type rawEventItem struct {
+	chain string
+	event *store.ChainRawEvent
+}
+
 type Supervisor struct {
-	cfg       *config.Config
-	rdb       *redis.Client
-	db        *gorm.DB
-	publisher *mq.Publisher
-	lock      *distlock.Lock
-	matcher   *matcher.Matcher
-	parsers   map[string]parser.Parser
+	cfg        *config.Config
+	rdb        *redis.Client
+	db         *gorm.DB
+	publisher  *mq.Publisher
+	lock       *distlock.Lock
+	matcher    *matcher.Matcher
+	parsers    map[string]parser.Parser
+	rawWriteCh chan rawEventItem
 }
 
 func NewSupervisor(
@@ -51,23 +57,20 @@ func NewSupervisor(
 			"TRON": parser.NewTRONParser(),
 			"SOL":  parser.NewSOLParser(),
 		},
+		rawWriteCh: make(chan rawEventItem, 2000),
 	}
 }
 
 func (s *Supervisor) Run(ctx context.Context) {
 	enabledChains := os.Getenv("ENABLED_CHAINS")
 	if enabledChains == "" {
-		//enabledChains = "eth,bsc,tron,sol" // 默认启用全部
 		enabledChains = "eth"
 	}
 
-	eventCh := make(chan RawEvent, 1000) // TODO 数据撑满导致阻塞？
 	errCh := make(chan error, 100)
-
 	syncStore := store.NewChainSyncStore(s.db)
 	rawStore := store.NewChainRawEventStore(s.db)
 
-	// 按配置启动各链 Listener
 	for _, name := range strings.Split(enabledChains, ",") {
 		name = strings.TrimSpace(name)
 		if name == "" {
@@ -80,75 +83,64 @@ func (s *Supervisor) Run(ctx context.Context) {
 			continue
 		}
 
-		// 实例化 BlockTracker
-		instanceID := fmt.Sprintf("worker-%s-%s", name, getInstanceID())
-		tracker := NewBlockTracker(
-			strings.ToUpper(name),
-			instanceID,
-			s.rdb,
-			syncStore,
-		)
+		// 每链独立的 eventCh，容量 = worker 数 * 200
+		workerCount := chainCfg.WorkerCount
+		if workerCount <= 0 {
+			workerCount = 4
+		}
+		eventCh := make(chan RawEvent, workerCount*200)
 
-		// 构建 Listener
+		instanceID := fmt.Sprintf("worker-%s-%s", name, getInstanceID())
+		tracker := NewBlockTracker(strings.ToUpper(name), instanceID, chainCfg.Confirmations, s.rdb, syncStore)
+
 		l, err := Build(name, chainCfg, tracker)
 		if err != nil {
-			zap.L().Fatal("构建 Listener 失败",
-				zap.String("chain", name),
-				zap.Error(err),
-			)
+			zap.L().Fatal("构建 Listener 失败", zap.String("chain", name), zap.Error(err))
 		}
 
-		// 尝试获取分布式锁（主备选举）
+		// 分布式锁主备选举
 		lockKey := fmt.Sprintf("listener:lock:%s", name)
 		ok2, err := s.lock.Lock(ctx, lockKey, 15*time.Second)
 		if err != nil || !ok2 {
 			zap.L().Info("备机待命，未获取到锁", zap.String("chain", name))
 			continue
 		}
-
-		// 持锁方启动续期
 		go s.lock.RenewLoop(ctx, lockKey, 15*time.Second, 5*time.Second)
 
-		// 启动 Listener
-		go func(l Listener, name string) {
-			if err := l.Start(ctx, eventCh, errCh); err != nil {
-				zap.L().Error("Listener 启动失败",
-					zap.String("chain", name),
-					zap.Error(err),
-				)
+		// 启动 Listener（写入该链专属 eventCh）
+		go func(l Listener, ch chan RawEvent, n string) {
+			if err := l.Start(ctx, ch, errCh); err != nil {
+				zap.L().Error("Listener 启动失败", zap.String("chain", n), zap.Error(err))
 			}
-		}(l, name)
+		}(l, eventCh, name)
 
-		zap.L().Info("Listener 已启动", zap.String("chain", name))
+		// 启动该链的 worker pool
+		for i := 0; i < workerCount; i++ {
+			go s.processEvents(ctx, eventCh)
+		}
+
+		zap.L().Info("Listener 已启动",
+			zap.String("chain", name),
+			zap.Int("workers", workerCount),
+		)
 	}
 
-	// 消费 eventCh：解析 → 地址匹配 → 发 RabbitMQ → 旁路写 raw_events
-	go s.processEvents(ctx, eventCh, rawStore)
-
-	// 消费 errCh：打日志
+	go s.runRawEventBatchWriter(ctx, rawStore)
 	go s.handleErrors(ctx, errCh)
 }
 
-func (s *Supervisor) processEvents(
-	ctx context.Context,
-	eventCh <-chan RawEvent,
-	rawStore *store.ChainRawEventStore,
-) {
+func (s *Supervisor) processEvents(ctx context.Context, eventCh <-chan RawEvent) {
 	for {
 		select {
 		case <-ctx.Done():
 			return
 		case raw := <-eventCh:
-			s.handleRawEvent(ctx, raw, rawStore)
+			s.handleRawEvent(ctx, raw)
 		}
 	}
 }
 
-func (s *Supervisor) handleRawEvent(
-	ctx context.Context,
-	raw RawEvent,
-	rawStore *store.ChainRawEventStore,
-) {
+func (s *Supervisor) handleRawEvent(ctx context.Context, raw RawEvent) {
 	p, ok := s.parsers[raw.Chain]
 	if !ok {
 		zap.L().Warn("未找到对应的 Parser", zap.String("chain", raw.Chain))
@@ -208,16 +200,70 @@ func (s *Supervisor) handleRawEvent(
 			zap.String("address", event.WatchedAddress),
 		)
 
-		// 旁路写 raw_events（异步 fire-and-forget）
-		go func(r RawEvent, e *parser.NormalizedEvent) {
-			rawStore.Insert(context.Background(), r.Chain, &store.ChainRawEvent{
-				TxHash:      r.TxHash,
-				BlockNumber: r.BlockNum,
-				BlockTime:   uint32(r.BlockTime),
-				EventType:   string(e.EventType),
-				RawData:     string(r.Data),
-			})
-		}(raw, event)
+		// 旁路写 raw_events（异步批量写入）
+		item := rawEventItem{
+			chain: raw.Chain,
+			event: &store.ChainRawEvent{
+				TxHash:      raw.TxHash,
+				BlockNumber: raw.BlockNum,
+				BlockTime:   uint32(raw.BlockTime),
+				EventType:   string(event.EventType),
+				RawData:     string(raw.Data),
+			},
+		}
+		select {
+		case s.rawWriteCh <- item:
+		default:
+			zap.L().Warn("raw_events 写入队列已满，丢弃",
+				zap.String("chain", raw.Chain),
+				zap.String("tx", raw.TxHash),
+			)
+		}
+	}
+}
+
+func (s *Supervisor) runRawEventBatchWriter(ctx context.Context, rawStore *store.ChainRawEventStore) {
+	const maxBatch = 100
+	const flushInterval = 500 * time.Millisecond
+
+	// per-chain buffers
+	buffers := make(map[string][]*store.ChainRawEvent)
+	ticker := time.NewTicker(flushInterval)
+	defer ticker.Stop()
+
+	flush := func(chain string) {
+		items := buffers[chain]
+		if len(items) == 0 {
+			return
+		}
+		buffers[chain] = nil
+		if err := rawStore.BatchInsert(context.Background(), chain, items); err != nil {
+			zap.L().Warn("raw_events 批量写入失败",
+				zap.String("chain", chain),
+				zap.Int("count", len(items)),
+				zap.Error(err),
+			)
+		}
+	}
+
+	for {
+		select {
+		case <-ctx.Done():
+			// flush remaining
+			for chain := range buffers {
+				flush(chain)
+			}
+			return
+		case item := <-s.rawWriteCh:
+			buffers[item.chain] = append(buffers[item.chain], item.event)
+			if len(buffers[item.chain]) >= maxBatch {
+				flush(item.chain)
+			}
+		case <-ticker.C:
+			for chain := range buffers {
+				flush(chain)
+			}
+		}
 	}
 }
 

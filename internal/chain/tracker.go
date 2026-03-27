@@ -12,20 +12,22 @@ import (
 )
 
 type BlockTracker struct {
-	chain      string
-	instanceID string
-	rdb        *redis.Client
-	syncStore  *store.ChainSyncStore
-	current    atomic.Uint64
-	counter    atomic.Int64
+	chain         string
+	instanceID    string
+	confirmations uint64
+	rdb           *redis.Client
+	syncStore     *store.ChainSyncStore
+	current       atomic.Uint64
+	counter       atomic.Int64
 }
 
-func NewBlockTracker(chain, instanceID string, rdb *redis.Client, syncStore *store.ChainSyncStore) *BlockTracker {
+func NewBlockTracker(chain, instanceID string, confirmations uint64, rdb *redis.Client, syncStore *store.ChainSyncStore) *BlockTracker {
 	return &BlockTracker{
-		chain:      chain,
-		instanceID: instanceID,
-		rdb:        rdb,
-		syncStore:  syncStore,
+		chain:         chain,
+		instanceID:    instanceID,
+		confirmations: confirmations,
+		rdb:           rdb,
+		syncStore:     syncStore,
 	}
 }
 
@@ -36,7 +38,7 @@ func (t *BlockTracker) Init(ctx context.Context, fetchLatest func() (uint64, err
 
 	// 第一级：Redis
 	if val, err := t.rdb.Get(ctx, key).Uint64(); err == nil && val > 0 {
-		start := val - safeBuffer(t.chain)
+		start := val - t.confirmations
 		t.current.Store(start)
 		zap.L().Info("从 Redis 恢复块号",
 			zap.String("chain", t.chain),
@@ -48,7 +50,7 @@ func (t *BlockTracker) Init(ctx context.Context, fetchLatest func() (uint64, err
 
 	// 第二级：MySQL
 	if last, err := t.syncStore.GetLastBlock(ctx, t.chain, t.instanceID); err == nil && last > 0 {
-		start := last - safeBuffer(t.chain)
+		start := last - t.confirmations
 		t.current.Store(start)
 		zap.L().Info("从 MySQL 恢复块号",
 			zap.String("chain", t.chain),
@@ -101,20 +103,4 @@ func (t *BlockTracker) Update(ctx context.Context, blockNum uint64) {
 // Get 获取当前处理的块号
 func (t *BlockTracker) Get() uint64 {
 	return t.current.Load()
-}
-
-// safeBuffer 重启时往前退几个块，防止漏块
-func safeBuffer(chain string) uint64 {
-	switch chain {
-	case "ETH":
-		return 2
-	case "BSC":
-		return 15
-	case "TRON":
-		return 20
-	case "SOL":
-		return 100
-	default:
-		return 10
-	}
 }

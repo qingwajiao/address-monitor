@@ -25,6 +25,7 @@ chains:
     backup_rpc_url: "https://1rpc.io/sepolia"
     poll_interval_seconds: 8
     confirmations: 12
+    worker_count: 4
   bsc:
     enabled: false
     type: evm
@@ -33,6 +34,7 @@ chains:
     backup_rpc_url: "https://data-seed-prebsc-1-s1.binance.org:8545"
     poll_interval_seconds: 5
     confirmations: 15
+    worker_count: 8
   tron:
     enabled: false
     type: tron
@@ -40,6 +42,7 @@ chains:
     backup_rpc_url: "https://api.trongrid.io"
     poll_interval_seconds: 3
     confirmations: 20
+    worker_count: 4
   sol:
     enabled: false
     type: sol
@@ -47,6 +50,7 @@ chains:
     http_rpc_url: "https://api.devnet.solana.com"
     backup_rpc_url: "https://api.mainnet-beta.solana.com"
     confirmations: 100
+    worker_count: 4
 
 dispatcher:
   timeout_seconds: 10

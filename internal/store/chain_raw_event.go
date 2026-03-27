@@ -36,6 +36,12 @@ func (s *ChainRawEventStore) Insert(ctx context.Context, chain string, e *ChainR
 		Create(e).Error
 }
 
+func (s *ChainRawEventStore) BatchInsert(ctx context.Context, chain string, events []*ChainRawEvent) error {
+	return s.db.WithContext(ctx).
+		Table(tableNameForChain(chain)).
+		CreateInBatches(events, 500).Error
+}
+
 func (s *ChainRawEventStore) ListByTimeRange(ctx context.Context, chain string, from, to time.Time) ([]*ChainRawEvent, error) {
 	var events []*ChainRawEvent
 	err := s.db.WithContext(ctx).

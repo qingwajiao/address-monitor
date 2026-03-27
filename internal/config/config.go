@@ -61,6 +61,7 @@ type ChainConfig struct {
 	HTTPRPCURL          string `mapstructure:"http_rpc_url"`
 	PollIntervalSeconds int    `mapstructure:"poll_interval_seconds"`
 	Confirmations       uint64
+	WorkerCount         int `mapstructure:"worker_count"` // 每链事件处理并发数，默认 4
 }
 
 type DispatcherConfig struct {
