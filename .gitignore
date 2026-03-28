@@ -8,7 +8,7 @@
 /*.dylib
 
 # Test binary
-*.test
+#*.test
 
 # Output of the go coverage tool
 *.out
