@@ -54,6 +54,7 @@ func NewRouter(
 		v1jwt.DELETE("/apps/:id", appHandler.Delete)
 		v1jwt.POST("/apps/:id/reset-key", appHandler.ResetAPIKey)
 		v1jwt.POST("/apps/:id/reset-secret", appHandler.ResetSecret)
+		v1jwt.PUT("/apps/:id/allowed-contracts", appHandler.UpdateAllowedContracts)
 	}
 
 	// API Key 鉴权路由（数据接口）

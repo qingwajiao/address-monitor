@@ -36,11 +36,11 @@ chains:
     confirmations: 15
     worker_count: 8
   tron:
-    enabled: false
+    enabled: true
     type: tron
     rpc_url: "https://api.shasta.trongrid.io"
     backup_rpc_url: "https://api.trongrid.io"
-    poll_interval_seconds: 3
+    poll_interval_seconds: 6
     confirmations: 20
     worker_count: 4
   sol:

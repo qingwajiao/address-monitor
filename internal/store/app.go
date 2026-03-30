@@ -8,15 +8,16 @@ import (
 )
 
 type App struct {
-	ID          uint64    `gorm:"primaryKey;autoIncrement"`
-	UserID      uint64    `gorm:"column:user_id;not null"`
-	Name        string    `gorm:"column:name;not null"`
-	APIKey      string    `gorm:"column:api_key;not null;uniqueIndex"`
-	Secret      string    `gorm:"column:secret;not null"`
-	CallbackURL string    `gorm:"column:callback_url;not null;default:''"`
-	Status      int       `gorm:"column:status;default:1"`
-	CreatedAt   time.Time `gorm:"column:created_at;autoCreateTime"`
-	UpdatedAt   time.Time `gorm:"column:updated_at;autoUpdateTime"`
+	ID               uint64    `gorm:"primaryKey;autoIncrement"`
+	UserID           uint64    `gorm:"column:user_id;not null"`
+	Name             string    `gorm:"column:name;not null"`
+	APIKey           string    `gorm:"column:api_key;not null;uniqueIndex"`
+	Secret           string    `gorm:"column:secret;not null"`
+	CallbackURL      string    `gorm:"column:callback_url;not null;default:''"`
+	AllowedContracts string    `gorm:"column:allowed_contracts;default:null"` // JSON: {"ETH":["0xabc..."],"TRON":["TR7..."]}
+	Status           int       `gorm:"column:status;default:1"`
+	CreatedAt        time.Time `gorm:"column:created_at;autoCreateTime"`
+	UpdatedAt        time.Time `gorm:"column:updated_at;autoUpdateTime"`
 }
 
 func (App) TableName() string { return "apps" }

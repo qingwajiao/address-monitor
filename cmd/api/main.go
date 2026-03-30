@@ -96,7 +96,7 @@ func main() {
 
 	// 初始化 Service
 	authSvc := service.NewAuthService(userStore, emailVerifyStore, refreshTokenStore, jwtManager, emailSender, cfg.JWT.BaseURL)
-	appSvc := service.NewAppService(appStore)
+	appSvc := service.NewAppService(appStore, rdb)
 	addrSvc := service.NewAddressService(addrStore, rdb)
 	webhookSvc := service.NewWebhookService(webhookStore, publisher, rdb)
 

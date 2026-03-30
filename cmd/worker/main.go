@@ -107,12 +107,20 @@ func main() {
 	// 启动热降冷定时任务（每天）
 	go m.StartColdDowngradeJob(ctx)
 
+	// 初始化合约白名单过滤器
+	contractStore := store.NewAllowedContractStore(db)
+	contractFilter := chain.NewContractFilter(contractStore)
+	if err := contractFilter.Load(ctx); err != nil {
+		zap.L().Warn("合约白名单加载失败，默认放行所有合约", zap.Error(err))
+	}
+	go contractFilter.StartRefreshJob(ctx, 5*time.Minute)
+
 	// 初始化 Publisher 和分布式锁
 	publisher := mq.NewPublisher(mqConn)
 	lock := distlock.New(rdb)
 
 	// 启动 Supervisor
-	supervisor := chain.NewSupervisor(cfg, rdb, db, publisher, lock, m)
+	supervisor := chain.NewSupervisor(cfg, rdb, db, publisher, lock, m, contractFilter)
 	supervisor.Run(ctx)
 
 	// 等待退出信号

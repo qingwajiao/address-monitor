@@ -146,6 +146,27 @@ func (h *AppHandler) ResetSecret(c *gin.Context) {
 	Success(c, result)
 }
 
+func (h *AppHandler) UpdateAllowedContracts(c *gin.Context) {
+	appID, err := parseID(c)
+	if err != nil {
+		Fail(c, http.StatusBadRequest, "invalid id")
+		return
+	}
+
+	var req dto.UpdateAllowedContractsReq
+	if err := c.ShouldBindJSON(&req); err != nil {
+		Fail(c, http.StatusBadRequest, err.Error())
+		return
+	}
+
+	userID := middleware.GetUserID(c)
+	if err := h.svc.UpdateAllowedContracts(c.Request.Context(), userID, appID, &req); err != nil {
+		Fail(c, appErrStatus(err), err.Error())
+		return
+	}
+	Success(c, nil)
+}
+
 func parseID(c *gin.Context) (uint64, error) {
 	return strconv.ParseUint(c.Param("id"), 10, 64)
 }

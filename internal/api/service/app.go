@@ -2,12 +2,15 @@ package service
 
 import (
 	"context"
+	"encoding/json"
 	"errors"
 	"fmt"
+	"strings"
 
 	"address-monitor/internal/api/dto"
 	"address-monitor/internal/store"
 
+	"github.com/go-redis/redis/v8"
 	"github.com/google/uuid"
 	"go.uber.org/zap"
 )
@@ -21,10 +24,11 @@ var (
 
 type AppService struct {
 	appStore *store.AppStore
+	rdb      *redis.Client
 }
 
-func NewAppService(appStore *store.AppStore) *AppService {
-	return &AppService{appStore: appStore}
+func NewAppService(appStore *store.AppStore, rdb *redis.Client) *AppService {
+	return &AppService{appStore: appStore, rdb: rdb}
 }
 
 func (s *AppService) Create(ctx context.Context, userID uint64, req *dto.CreateAppReq) (*dto.AppResp, error) {
@@ -142,6 +146,42 @@ func (s *AppService) ResetSecret(ctx context.Context, userID, appID uint64) (*dt
 	return toAppResp(app, true), nil
 }
 
+// UpdateAllowedContracts 更新 App 级合约白名单，同时使 Dispatcher 缓存失效
+func (s *AppService) UpdateAllowedContracts(ctx context.Context, userID, appID uint64, req *dto.UpdateAllowedContractsReq) error {
+	if _, err := s.getOwned(ctx, userID, appID); err != nil {
+		return err
+	}
+
+	// 地址统一小写，链名统一大写
+	normalized := make(map[string][]string, len(req.AllowedContracts))
+	for chain, addrs := range req.AllowedContracts {
+		lower := make([]string, 0, len(addrs))
+		for _, a := range addrs {
+			lower = append(lower, strings.ToLower(a))
+		}
+		normalized[strings.ToUpper(chain)] = lower
+	}
+
+	var raw string
+	if len(normalized) > 0 {
+		b, _ := json.Marshal(normalized)
+		raw = string(b)
+	}
+
+	if err := s.appStore.Update(ctx, appID, map[string]interface{}{"allowed_contracts": raw}); err != nil {
+		return err
+	}
+
+	// 使 Dispatcher 的 app_info 缓存立即失效，下次读取会重新从 DB 加载
+	s.rdb.Del(ctx, fmt.Sprintf("app_info:%d", appID))
+
+	zap.L().Info("更新 App 合约白名单",
+		zap.Uint64("app_id", appID),
+		zap.String("contracts", raw),
+	)
+	return nil
+}
+
 // checkDuplicate 检查 name 和 callbackURL 在同一用户下是否重复
 // excludeID 为 0 表示 Create，非 0 表示 Update（排除自身）
 func (s *AppService) checkDuplicate(ctx context.Context, userID uint64, name, callbackURL string, excludeID uint64) error {
@@ -191,6 +231,12 @@ func toAppResp(app *store.App, withSecret bool) *dto.AppResp {
 	}
 	if withSecret {
 		resp.Secret = app.Secret
+	}
+	if app.AllowedContracts != "" {
+		var m map[string][]string
+		if json.Unmarshal([]byte(app.AllowedContracts), &m) == nil {
+			resp.AllowedContracts = m
+		}
 	}
 	return resp
 }

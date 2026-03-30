@@ -26,14 +26,15 @@ type rawEventItem struct {
 }
 
 type Supervisor struct {
-	cfg        *config.Config
-	rdb        *redis.Client
-	db         *gorm.DB
-	publisher  *mq.Publisher
-	lock       *distlock.Lock
-	matcher    *matcher.Matcher
-	parsers    map[string]parser.Parser
-	rawWriteCh chan rawEventItem
+	cfg            *config.Config
+	rdb            *redis.Client
+	db             *gorm.DB
+	publisher      *mq.Publisher
+	lock           *distlock.Lock
+	matcher        *matcher.Matcher
+	contractFilter *ContractFilter
+	parsers        map[string]parser.Parser
+	rawWriteCh     chan rawEventItem
 }
 
 func NewSupervisor(
@@ -43,14 +44,16 @@ func NewSupervisor(
 	publisher *mq.Publisher,
 	lock *distlock.Lock,
 	m *matcher.Matcher,
+	contractFilter *ContractFilter,
 ) *Supervisor {
 	return &Supervisor{
-		cfg:       cfg,
-		rdb:       rdb,
-		db:        db,
-		publisher: publisher,
-		lock:      lock,
-		matcher:   m,
+		cfg:            cfg,
+		rdb:            rdb,
+		db:             db,
+		publisher:      publisher,
+		lock:           lock,
+		matcher:        m,
+		contractFilter: contractFilter,
 		parsers: map[string]parser.Parser{
 			"ETH":  parser.NewEVMParser("ETH"),
 			"BSC":  parser.NewEVMParser("BSC"),
@@ -64,7 +67,7 @@ func NewSupervisor(
 func (s *Supervisor) Run(ctx context.Context) {
 	enabledChains := os.Getenv("ENABLED_CHAINS")
 	if enabledChains == "" {
-		enabledChains = "eth"
+		enabledChains = "tron"
 	}
 
 	errCh := make(chan error, 100)
@@ -166,6 +169,15 @@ func (s *Supervisor) handleRawEvent(ctx context.Context, raw RawEvent) {
 	}
 
 	for _, event := range events {
+		// 系统级合约白名单过滤
+		contractAddr := ""
+		if event.Asset != nil {
+			contractAddr = event.Asset.ContractAddress
+		}
+		if !s.contractFilter.IsAllowed(event.Chain, contractAddr) {
+			continue
+		}
+
 		// 地址匹配（三层漏斗）
 		subs, err := s.matcher.IsWatched(ctx, event.Chain, event.WatchedAddress)
 		if err != nil {

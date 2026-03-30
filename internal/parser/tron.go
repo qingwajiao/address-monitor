@@ -127,8 +127,8 @@ func (p *TRONParser) parseLogs(raw RawEvent, tx tronTx, rawStr string) ([]*Norma
 			continue
 		}
 
-		from := normalizeHexAddress(log.Topics[1])
-		to := normalizeHexAddress(log.Topics[2])
+		from := tronTopicToAddress(log.Topics[1])
+		to := tronTopicToAddress(log.Topics[2])
 
 		dataBytes, _ := hex.DecodeString(log.Data)
 		amount := new(big.Int).SetBytes(dataBytes).String()
@@ -174,11 +174,22 @@ func (p *TRONParser) parseLogs(raw RawEvent, tx tronTx, rawStr string) ([]*Norma
 	return events, nil
 }
 
-// normalizeHexAddress 将 TRON hex 地址（41开头）转为小写 hex
+// normalizeHexAddress 将 TRON hex 地址（41开头）转为小写 hex（去掉 41 前缀）
+// 用于 TransferContract 中的 owner_address / to_address 字段
 func normalizeHexAddress(addr string) string {
 	addr = strings.TrimPrefix(addr, "0x")
 	addr = strings.TrimPrefix(addr, "41")
 	return strings.ToLower(addr)
+}
+
+// tronTopicToAddress 从 32 字节补零的 log topic 中提取 TRON 地址（后 40 位）
+// 用于 TriggerSmartContract log 中的 topics[1] / topics[2]
+func tronTopicToAddress(topic string) string {
+	topic = strings.TrimPrefix(topic, "0x")
+	if len(topic) >= 40 {
+		return strings.ToLower(topic[len(topic)-40:])
+	}
+	return strings.ToLower(topic)
 }
 
 // HexToBase58 将 TRON hex 地址转换为 Base58Check 格式（T 开头）
