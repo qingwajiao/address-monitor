@@ -99,9 +99,10 @@ func main() {
 	appSvc := service.NewAppService(appStore, rdb)
 	addrSvc := service.NewAddressService(addrStore, rdb)
 	webhookSvc := service.NewWebhookService(webhookStore, publisher, rdb)
+	contractSvc := service.NewContractService(store.NewAllowedContractStore(db))
 
 	// 启动 HTTP 服务
-	router := api.NewRouter(appStore, appSvc, addrSvc, webhookSvc, authSvc, jwtManager)
+	router := api.NewRouter(appStore, appSvc, addrSvc, webhookSvc, authSvc, contractSvc, jwtManager)
 
 	srv := &http.Server{
 		Addr:    fmt.Sprintf(":%d", cfg.Server.Port),

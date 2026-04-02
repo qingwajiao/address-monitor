@@ -7,11 +7,17 @@ import (
 	"gorm.io/gorm"
 )
 
+const (
+	RoleUser  = "user"
+	RoleAdmin = "admin"
+)
+
 type User struct {
 	ID           uint64    `gorm:"primaryKey;autoIncrement"`
 	Email        string    `gorm:"column:email;not null;uniqueIndex"`
 	PasswordHash string    `gorm:"column:password_hash;not null"`
 	Status       int       `gorm:"column:status;default:0"`
+	Role         string    `gorm:"column:role;not null;default:'user'"`
 	CreatedAt    time.Time `gorm:"column:created_at;autoCreateTime"`
 	UpdatedAt    time.Time `gorm:"column:updated_at;autoUpdateTime"`
 }

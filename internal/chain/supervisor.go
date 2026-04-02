@@ -67,7 +67,7 @@ func NewSupervisor(
 func (s *Supervisor) Run(ctx context.Context) {
 	enabledChains := os.Getenv("ENABLED_CHAINS")
 	if enabledChains == "" {
-		enabledChains = "tron"
+		enabledChains = "eth"
 	}
 
 	errCh := make(chan error, 100)
@@ -176,6 +176,15 @@ func (s *Supervisor) handleRawEvent(ctx context.Context, raw RawEvent) {
 		}
 		if !s.contractFilter.IsAllowed(event.Chain, contractAddr) {
 			continue
+		}
+		// 用白名单中的 symbol/decimals 补全 token 信息
+		if event.Asset != nil && contractAddr != "" {
+			if event.Asset.Symbol == "" {
+				event.Asset.Symbol = s.contractFilter.GetSymbol(event.Chain, contractAddr)
+			}
+			if event.Asset.Decimals == 0 {
+				event.Asset.Decimals = s.contractFilter.GetDecimals(event.Chain, contractAddr)
+			}
 		}
 
 		// 地址匹配（三层漏斗）

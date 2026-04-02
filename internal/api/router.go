@@ -18,6 +18,7 @@ func NewRouter(
 	addrSvc *service.AddressService,
 	webhookSvc *service.WebhookService,
 	authSvc *service.AuthService,
+	contractSvc *service.ContractService,
 	jwtManager *jwtpkg.Manager,
 ) *gin.Engine {
 	r := gin.New()
@@ -32,6 +33,7 @@ func NewRouter(
 	appHandler := handler.NewAppHandler(appSvc)
 	addrHandler := handler.NewAddressHandler(addrSvc)
 	webhookHandler := handler.NewWebhookHandler(webhookSvc)
+	contractHandler := handler.NewContractHandler(contractSvc)
 
 	// 认证路由（无需鉴权）
 	auth := r.Group("/auth")
@@ -55,6 +57,15 @@ func NewRouter(
 		v1jwt.POST("/apps/:id/reset-key", appHandler.ResetAPIKey)
 		v1jwt.POST("/apps/:id/reset-secret", appHandler.ResetSecret)
 		v1jwt.PUT("/apps/:id/allowed-contracts", appHandler.UpdateAllowedContracts)
+	}
+
+	// Admin 路由（JWT + admin role）
+	admin := r.Group("/v1/admin", middleware.JWTAuth(jwtManager), middleware.AdminOnly())
+	{
+		admin.GET("/contracts", contractHandler.List)
+		admin.POST("/contracts", contractHandler.Create)
+		admin.PUT("/contracts/:id", contractHandler.Update)
+		admin.DELETE("/contracts/:id", contractHandler.Delete)
 	}
 
 	// API Key 鉴权路由（数据接口）

@@ -10,6 +10,7 @@ import (
 	"address-monitor/internal/mq"
 	"address-monitor/internal/parser"
 	"address-monitor/internal/store"
+	"address-monitor/pkg/addrcodec"
 
 	"github.com/go-redis/redis/v8"
 	"github.com/google/uuid"
@@ -230,6 +231,7 @@ func (e *Expander) getAppInfo(ctx context.Context, appID uint64) (*appInfo, erro
 }
 
 // parseAllowedContracts 将 JSON 字符串解析为 chain -> set 结构
+// DB 中地址已是链原生格式，直接使用
 func parseAllowedContracts(raw string) map[string]map[string]struct{} {
 	if raw == "" {
 		return nil
@@ -239,27 +241,29 @@ func parseAllowedContracts(raw string) map[string]map[string]struct{} {
 		return nil
 	}
 	result := make(map[string]map[string]struct{}, len(m))
-	for chain, addrs := range m {
+	for c, addrs := range m {
 		set := make(map[string]struct{}, len(addrs))
 		for _, a := range addrs {
-			set[strings.ToLower(a)] = struct{}{}
+			set[a] = struct{}{}
 		}
-		result[strings.ToUpper(chain)] = set
+		result[strings.ToUpper(c)] = set
 	}
 	return result
 }
 
 // isContractAllowed 检查事件合约地址是否在该 App 的白名单内
 // 原生转账（空合约地址）或 App 未配置白名单时始终放行
-func isContractAllowed(allowed map[string]map[string]struct{}, chain, contractAddress string) bool {
+func isContractAllowed(allowed map[string]map[string]struct{}, chainName, contractAddress string) bool {
 	if contractAddress == "" || len(allowed) == 0 {
 		return true
 	}
-	contracts, ok := allowed[strings.ToUpper(chain)]
+	contracts, ok := allowed[strings.ToUpper(chainName)]
 	if !ok || len(contracts) == 0 {
 		return true
 	}
-	_, exists := contracts[strings.ToLower(contractAddress)]
+	// event.Asset.ContractAddress 已是 Parser 输出的链原生格式
+	codec := addrcodec.Get(chainName)
+	_, exists := contracts[codec.Normalize(contractAddress)]
 	return exists
 }
 

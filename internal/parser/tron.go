@@ -7,7 +7,8 @@ import (
 	"math/big"
 	"strings"
 
-	"github.com/btcsuite/btcutil/base58"
+	"address-monitor/pkg/addrcodec"
+
 	"github.com/ethereum/go-ethereum/common"
 )
 
@@ -174,30 +175,19 @@ func (p *TRONParser) parseLogs(raw RawEvent, tx tronTx, rawStr string) ([]*Norma
 	return events, nil
 }
 
-// normalizeHexAddress 将 TRON hex 地址（41开头）转为小写 hex（去掉 41 前缀）
+// normalizeHexAddress 将 TRON hex 地址（41开头）转为 Base58Check（T...）
 // 用于 TransferContract 中的 owner_address / to_address 字段
 func normalizeHexAddress(addr string) string {
-	addr = strings.TrimPrefix(addr, "0x")
-	addr = strings.TrimPrefix(addr, "41")
-	return strings.ToLower(addr)
+	return addrcodec.HexToBase58(addr)
 }
 
-// tronTopicToAddress 从 32 字节补零的 log topic 中提取 TRON 地址（后 40 位）
+// tronTopicToAddress 从 32 字节补零的 log topic 中提取 TRON 地址并转为 Base58Check
 // 用于 TriggerSmartContract log 中的 topics[1] / topics[2]
 func tronTopicToAddress(topic string) string {
 	topic = strings.TrimPrefix(topic, "0x")
 	if len(topic) >= 40 {
-		return strings.ToLower(topic[len(topic)-40:])
+		// 取后 40 位（20 字节地址），补 41 前缀后转 Base58
+		return addrcodec.HexToBase58("41" + topic[len(topic)-40:])
 	}
-	return strings.ToLower(topic)
-}
-
-// HexToBase58 将 TRON hex 地址转换为 Base58Check 格式（T 开头）
-func HexToBase58(hexAddr string) string {
-	hexAddr = strings.TrimPrefix(hexAddr, "0x")
-	b, err := hex.DecodeString(hexAddr)
-	if err != nil || len(b) == 0 {
-		return hexAddr
-	}
-	return base58.CheckEncode(b[1:], b[0])
+	return addrcodec.HexToBase58(topic)
 }

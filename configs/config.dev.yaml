@@ -27,7 +27,7 @@ chains:
     confirmations: 12
     worker_count: 4
   bsc:
-    enabled: false
+    enabled: true
     type: evm
     chain_id: 97
     rpc_url: "https://bsc-testnet-rpc.publicnode.com"

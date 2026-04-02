@@ -1,0 +1,1 @@
+ALTER TABLE allowed_contracts ADD COLUMN decimals TINYINT UNSIGNED NOT NULL DEFAULT 0 AFTER symbol;

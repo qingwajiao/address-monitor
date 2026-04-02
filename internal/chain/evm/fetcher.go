@@ -76,7 +76,7 @@ func (f *EVMFetcher) FetchBlock(ctx context.Context, num uint64) ([]chain.RawEve
 	}()
 	go func() {
 		defer wg.Done()
-		logs, _ = client.FilterLogs(ctx, ethereum.FilterQuery{
+		logs, blockErr = client.FilterLogs(ctx, ethereum.FilterQuery{
 			FromBlock: blockNum,
 			ToBlock:   blockNum,
 			// 不传 Addresses，拉全量 log，在 matcher 层过滤

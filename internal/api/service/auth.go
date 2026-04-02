@@ -194,7 +194,7 @@ func (s *AuthService) ResendVerify(ctx context.Context, req *dto.ResendVerifyReq
 // generateTokenPair 生成 Access Token + Refresh Token
 func (s *AuthService) generateTokenPair(ctx context.Context, user *store.User) (*dto.TokenResp, error) {
 	// 生成 Access Token
-	accessToken, err := s.jwtManager.GenerateAccessToken(user.ID, user.Email)
+	accessToken, err := s.jwtManager.GenerateAccessToken(user.ID, user.Email, user.Role)
 	if err != nil {
 		return nil, fmt.Errorf("生成 Access Token 失败: %w", err)
 	}

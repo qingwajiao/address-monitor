@@ -15,6 +15,7 @@ var (
 type Claims struct {
 	UserID uint64 `json:"user_id"`
 	Email  string `json:"email"`
+	Role   string `json:"role"`
 	jwt.RegisteredClaims
 }
 
@@ -33,10 +34,11 @@ func NewManager(secret string) *Manager {
 }
 
 // GenerateAccessToken 生成 Access Token（2小时有效）
-func (m *Manager) GenerateAccessToken(userID uint64, email string) (string, error) {
+func (m *Manager) GenerateAccessToken(userID uint64, email, role string) (string, error) {
 	claims := &Claims{
 		UserID: userID,
 		Email:  email,
+		Role:   role,
 		RegisteredClaims: jwt.RegisteredClaims{
 			ExpiresAt: jwt.NewNumericDate(time.Now().Add(m.accessTokenTTL)),
 			IssuedAt:  jwt.NewNumericDate(time.Now()),

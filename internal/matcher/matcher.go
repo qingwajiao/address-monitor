@@ -33,53 +33,51 @@ func New(rdb *redis.Client, addrStore *store.WatchedAddressStore, chains []strin
 	}
 }
 
-// IsWatched 三层漏斗
+// IsWatched 三层漏斗，address 必须已经是链原生格式（由 Parser 保证）
 func (m *Matcher) IsWatched(ctx context.Context, chain, address string) ([]*store.WatchedAddress, error) {
-	addr := strings.ToLower(address)
-
 	// 第一层：Bloom Filter（按链独立）
 	bf, ok := m.bfs[chain]
-	if !ok || !bf.Test(addr) {
+	if !ok || !bf.Test(address) {
 		return nil, nil
 	}
 
 	// 第二层：Redis 热集合
 	hotKey := fmt.Sprintf("watch:hot:%s", chain)
-	isMember, err := m.rdb.SIsMember(ctx, hotKey, addr).Result()
+	isMember, err := m.rdb.SIsMember(ctx, hotKey, address).Result()
 	if err == nil && isMember {
 		zap.L().Debug("热地址命中",
 			zap.String("chain", chain),
-			zap.String("address", addr),
+			zap.String("address", address),
 		)
-		return m.addrStore.ListByChainAddress(ctx, chain, addr)
+		return m.addrStore.ListByChainAddress(ctx, chain, address)
 	}
 
 	// 第三层：MySQL 冷地址
-	was, err := m.addrStore.ListByChainAddress(ctx, chain, addr)
+	was, err := m.addrStore.ListByChainAddress(ctx, chain, address)
 	if err != nil || len(was) == 0 {
 		zap.L().Debug("BF 误判",
 			zap.String("chain", chain),
-			zap.String("address", addr),
+			zap.String("address", address),
 		)
 		return nil, err
 	}
 
 	zap.L().Info("冷地址命中，异步升热",
 		zap.String("chain", chain),
-		zap.String("address", addr),
+		zap.String("address", address),
 	)
-	go m.promoteToHot(context.Background(), chain, addr)
+	go m.promoteToHot(context.Background(), chain, address)
 	return was, nil
 }
 
-// AddToBF Worker 收到 Pub/Sub 消息后调用
+// AddToBF Worker 收到 Pub/Sub 消息后调用，address 已是链原生格式
 func (m *Matcher) AddToBF(chain, address string) {
 	bf, ok := m.bfs[chain]
 	if !ok {
 		zap.L().Warn("AddToBF: 未知链", zap.String("chain", chain))
 		return
 	}
-	bf.Add(strings.ToLower(address))
+	bf.Add(address)
 	zap.L().Info("新地址加入 Bloom Filter",
 		zap.String("chain", chain),
 		zap.String("address", address),
@@ -102,7 +100,7 @@ func (m *Matcher) LoadFromDB(ctx context.Context) error {
 			if !ok {
 				continue
 			}
-			bf.Add(strings.ToLower(wa.Address))
+			bf.Add(wa.Address)
 			if wa.ID > maxID {
 				maxID = wa.ID
 			}
@@ -233,7 +231,7 @@ func (m *Matcher) syncFromDB(ctx context.Context) {
 	var maxID uint64
 	for _, wa := range was {
 		if bf, ok := m.bfs[wa.Chain]; ok {
-			bf.Add(strings.ToLower(wa.Address))
+			bf.Add(wa.Address)
 			added++
 		}
 		if wa.ID > maxID {
@@ -316,13 +314,13 @@ func (m *Matcher) promoteToHot(ctx context.Context, chain, address string) {
 func (m *Matcher) UpdateLastActive(ctx context.Context, chain, address string) {
 	m.rdb.HSet(ctx,
 		fmt.Sprintf("hot:last_active:%s", chain),
-		strings.ToLower(address),
+		address,
 		time.Now().Unix(),
 	)
 }
 
 func (m *Matcher) AddToHotSet(ctx context.Context, chain, address string) {
-	m.rdb.SAdd(ctx, fmt.Sprintf("watch:hot:%s", chain), strings.ToLower(address))
+	m.rdb.SAdd(ctx, fmt.Sprintf("watch:hot:%s", chain), address)
 }
 
 func (m *Matcher) GetHotAddresses(ctx context.Context, chain string) ([]string, error) {

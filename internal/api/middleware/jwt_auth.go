@@ -12,6 +12,7 @@ import (
 const (
 	ContextKeyUserID = "user_id"
 	ContextKeyEmail  = "email"
+	ContextKeyRole   = "role"
 )
 
 func JWTAuth(jwtManager *jwtpkg.Manager) gin.HandlerFunc {
@@ -40,6 +41,19 @@ func JWTAuth(jwtManager *jwtpkg.Manager) gin.HandlerFunc {
 
 		c.Set(ContextKeyUserID, claims.UserID)
 		c.Set(ContextKeyEmail, claims.Email)
+		c.Set(ContextKeyRole, claims.Role)
+		c.Next()
+	}
+}
+
+// AdminOnly 必须在 JWTAuth 之后使用，校验当前用户是否为 admin
+func AdminOnly() gin.HandlerFunc {
+	return func(c *gin.Context) {
+		role, _ := c.Get(ContextKeyRole)
+		if role != "admin" {
+			abortUnauthorized(c, "需要管理员权限")
+			return
+		}
 		c.Next()
 	}
 }

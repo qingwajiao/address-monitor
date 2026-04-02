@@ -9,6 +9,7 @@ import (
 
 	"address-monitor/internal/api/dto"
 	"address-monitor/internal/store"
+	"address-monitor/pkg/addrcodec"
 
 	"github.com/go-redis/redis/v8"
 	"github.com/google/uuid"
@@ -152,14 +153,15 @@ func (s *AppService) UpdateAllowedContracts(ctx context.Context, userID, appID u
 		return err
 	}
 
-	// 地址统一小写，链名统一大写
+	// 地址按链原生格式归一化，链名统一大写
 	normalized := make(map[string][]string, len(req.AllowedContracts))
-	for chain, addrs := range req.AllowedContracts {
-		lower := make([]string, 0, len(addrs))
+	for c, addrs := range req.AllowedContracts {
+		codec := addrcodec.Get(c)
+		normed := make([]string, 0, len(addrs))
 		for _, a := range addrs {
-			lower = append(lower, strings.ToLower(a))
+			normed = append(normed, codec.Normalize(a))
 		}
-		normalized[strings.ToUpper(chain)] = lower
+		normalized[strings.ToUpper(c)] = normed
 	}
 
 	var raw string

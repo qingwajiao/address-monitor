@@ -9,6 +9,7 @@ import (
 	"address-monitor/internal/api/dto"
 	"address-monitor/internal/matcher"
 	"address-monitor/internal/store"
+	"address-monitor/pkg/addrcodec"
 
 	"github.com/go-redis/redis/v8"
 	"go.uber.org/zap"
@@ -38,7 +39,7 @@ func (s *AddressService) Create(ctx context.Context, appID uint64, req *dto.Crea
 	wa := &store.WatchedAddress{
 		AppID:   appID,
 		Chain:   strings.ToUpper(req.Chain),
-		Address: strings.ToLower(req.Address),
+		Address: normalizeAddress(req.Chain, req.Address),
 		Label:   req.Label,
 		Status:  1,
 	}
@@ -65,7 +66,7 @@ func (s *AddressService) BatchCreate(ctx context.Context, appID uint64, req *dto
 	seen := make(map[string]struct{})
 	var validAddrs []string
 	for _, addr := range req.Addresses {
-		addr = strings.TrimSpace(strings.ToLower(addr))
+		addr = normalizeAddress(req.Chain, strings.TrimSpace(addr))
 		if addr == "" {
 			continue
 		}
@@ -245,6 +246,14 @@ func (s *AddressService) publishAddEvent(ctx context.Context, chain, address str
 			zap.Error(err),
 		)
 	}
+}
+
+// normalizeAddress 按链名对地址做格式归一化，统一存为链原生格式：
+// EVM : 0x + 小写 hex
+// TRON: Base58Check（T 开头）
+// SOL : base58 原样
+func normalizeAddress(chainName, address string) string {
+	return addrcodec.Get(chainName).Normalize(address)
 }
 
 func toAddressResp(wa *store.WatchedAddress) *dto.AddressResp {
